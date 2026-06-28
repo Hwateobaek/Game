@@ -87,13 +87,14 @@
 
   #grid {
     display: grid;
-    gap: 12px;
-    margin-bottom: 14px;
+    gap: clamp(8px, 2.5vw, 12px);
+    width: min(92vw, 420px);   /* 화면 폭에 맞춰 자동 조절, 데스크톱 상한 420px */
+    margin: 0 auto 14px;
     touch-action: manipulation;
   }
   .cell {
-    width: 90px;
-    height: 90px;
+    width: 100%;
+    aspect-ratio: 1 / 1;       /* 정사각형 유지하며 너비에 따라 크기 결정 */
     background: var(--cell);
     border-radius: 14px;
     cursor: pointer;
@@ -147,7 +148,7 @@
 
   <div class="footer">
     빠를수록 좋습니다 · 빈 칸을 누르면 페널티(+100ms)<br>
-    최고 기록은 이 브라우저에 저장됩니다
+    최고 기록은 이 브라우저에 저장됩니다 · 🔊 게임 중 배경음악 재생
   </div>
 
 <script>
@@ -180,17 +181,85 @@
   let best = parseFloat(localStorage.getItem('reflexGridBest'));
   if (!isNaN(best)) bestEl.textContent = Math.round(best) + ' ms';
 
+  // ===== 게임 음악 (Web Audio로 실시간 합성 — 외부 파일/저작권 없음) =====
+  let audioCtx = null, masterGain = null, musicTimer = null;
+  let noteIndex = 0, nextNoteTime = 0;
+  const MUSIC_VOL = 0.16;
+  const TEMPO = 132;                  // BPM
+  const STEP = 60 / TEMPO / 2;        // 8분음표 길이(초)
+  // 밝은 펜타토닉 멜로디/베이스 — 무한 루프해도 잘 안 질리는 진행
+  const MELODY = [659.25, 587.33, 523.25, 587.33, 659.25, 659.25, 659.25, 587.33,
+                  523.25, 523.25, 587.33, 659.25, 587.33, 523.25, 440.00, 523.25];
+  const BASS   = [130.81, 130.81, 174.61, 174.61, 196.00, 196.00, 146.83, 146.83];
+
+  function initAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;          // 미지원 브라우저면 음악 없이 진행
+      audioCtx = new AC();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = MUSIC_VOL;
+      masterGain.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return true;
+  }
+
+  function blip(freq, time, dur, type, vol) {
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0, time);
+    g.gain.linearRampToValueAtTime(vol, time + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    osc.connect(g); g.connect(masterGain);
+    osc.start(time);
+    osc.stop(time + dur + 0.03);
+  }
+
+  function scheduler() {
+    // 가까운 미래(0.1초)까지의 음표를 미리 스케줄 — 타이밍 안정적
+    while (nextNoteTime < audioCtx.currentTime + 0.1) {
+      blip(MELODY[noteIndex % MELODY.length], nextNoteTime, STEP * 0.9, 'square', 0.5);
+      if (noteIndex % 2 === 0) {
+        blip(BASS[(noteIndex / 2) % BASS.length], nextNoteTime, STEP * 1.7, 'triangle', 0.85);
+      }
+      nextNoteTime += STEP;
+      noteIndex++;
+    }
+  }
+
+  function startMusic() {
+    if (!initAudio()) return;
+    noteIndex = 0;
+    nextNoteTime = audioCtx.currentTime + 0.06;
+    const now = audioCtx.currentTime;
+    masterGain.gain.cancelScheduledValues(now);
+    masterGain.gain.setValueAtTime(0.0001, now);            // 페이드 인
+    masterGain.gain.linearRampToValueAtTime(MUSIC_VOL, now + 0.3);
+    scheduler();
+    musicTimer = setInterval(scheduler, 25);
+  }
+
+  function stopMusic() {
+    if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+    if (audioCtx && masterGain) {
+      const now = audioCtx.currentTime;
+      masterGain.gain.cancelScheduledValues(now);
+      masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+      masterGain.gain.linearRampToValueAtTime(0.0001, now + 0.25);  // 페이드 아웃
+    }
+  }
+
   function buildGrid() {
     gridEl.innerHTML = '';
-    gridEl.style.gridTemplateColumns = `repeat(${size}, auto)`;
+    gridEl.style.gridTemplateColumns = `repeat(${size}, 1fr)`;  // 칸은 CSS가 반응형으로 크기 결정
     cells = [];
     const count = size * size;
-    const cellPx = size === 3 ? 90 : 70;
     for (let i = 0; i < count; i++) {
       const c = document.createElement('div');
       c.className = 'cell';
-      c.style.width = cellPx + 'px';
-      c.style.height = cellPx + 'px';
       c.dataset.index = i;
       c.addEventListener('pointerdown', onCellPress);
       gridEl.appendChild(c);
@@ -273,6 +342,7 @@
     startBtn.disabled = true;
     setToggleEnabled(false);
     flash('집중! 🔥');
+    startMusic();                       // 게임 시작과 함께 음악 재생
     endAt = performance.now() + ROUND_MS;
     tick();
     scheduleNext(600);
@@ -280,6 +350,7 @@
 
   function endGame() {
     playing = false;
+    stopMusic();                        // 게임 종료와 함께 음악 정지
     cancelAnimationFrame(rafId);
     clearTimeout(nextTimeout);
     if (litIndex >= 0) { cells[litIndex].classList.remove('lit'); litIndex = -1; }
