@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>반사신경 그리드 🎯</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #1a1d29;
+    --cell: #272b3a;
+    --cell-hover: #323750;
+    --accent: #ff5470;
+    --accent-glow: rgba(255, 84, 112, 0.6);
+    --good: #36e2a4;
+    --text: #e8eaf2;
+    --muted: #7a8099;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: radial-gradient(circle at 50% 0%, #1c2030 0%, var(--bg) 60%);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  h1 {
+    font-size: 1.9rem;
+    margin-bottom: 4px;
+    letter-spacing: 1px;
+  }
+  .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 18px; }
+
+  .stats {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .stat {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 10px 18px;
+    min-width: 92px;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+  .stat .label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .stat .value { font-size: 1.5rem; font-weight: 700; margin-top: 2px; }
+  .stat .value.accent { color: var(--accent); }
+  .stat .value.good { color: var(--good); }
+
+  .controls { display: flex; gap: 10px; margin-bottom: 18px; align-items: center; }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 11px 26px;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.08s, box-shadow 0.2s, background 0.2s;
+    box-shadow: 0 4px 18px var(--accent-glow);
+  }
+  button:hover { transform: translateY(-1px); }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: 0.45; cursor: default; box-shadow: none; transform: none; }
+
+  .size-toggle { display: flex; background: var(--panel); border-radius: 10px; overflow: hidden; }
+  .size-toggle button {
+    background: transparent;
+    box-shadow: none;
+    padding: 11px 16px;
+    border-radius: 0;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .size-toggle button.active { background: var(--cell-hover); color: var(--text); }
+
+  #grid {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 14px;
+    touch-action: manipulation;
+  }
+  .cell {
+    width: 90px;
+    height: 90px;
+    background: var(--cell);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: background 0.06s, transform 0.06s;
+    border: 1px solid rgba(255,255,255,0.04);
+  }
+  .cell:hover { background: var(--cell-hover); }
+  .cell.lit {
+    background: var(--accent);
+    box-shadow: 0 0 26px var(--accent-glow), inset 0 0 12px rgba(255,255,255,0.25);
+    transform: scale(1.04);
+  }
+  .cell.miss {
+    background: #44303a;
+    transition: background 0.25s;
+  }
+
+  #message {
+    height: 26px;
+    color: var(--muted);
+    font-size: 0.95rem;
+    text-align: center;
+  }
+  #message .hit { color: var(--good); font-weight: 600; }
+  #message .bad { color: var(--accent); font-weight: 600; }
+
+  .footer { margin-top: 10px; color: var(--muted); font-size: 0.78rem; text-align: center; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <h1>반사신경 그리드 🎯</h1>
+  <div class="subtitle">반짝이는 칸을 최대한 빠르게 누르세요 · 한 판 30초</div>
+
+  <div class="stats">
+    <div class="stat"><div class="label">남은 시간</div><div class="value" id="time">30.0</div></div>
+    <div class="stat"><div class="label">점수</div><div class="value accent" id="score">0</div></div>
+    <div class="stat"><div class="label">평균 반응</div><div class="value" id="avg">— ms</div></div>
+    <div class="stat"><div class="label">최고 기록</div><div class="value good" id="best">— ms</div></div>
+  </div>
+
+  <div class="controls">
+    <button id="startBtn">시작</button>
+    <div class="size-toggle" id="sizeToggle">
+      <button data-size="3" class="active">3×3</button>
+      <button data-size="4">4×4</button>
+    </div>
+  </div>
+
+  <div id="grid"></div>
+  <div id="message">시작 버튼을 누르고 준비하세요!</div>
+
+  <div class="footer">
+    빠를수록 좋습니다 · 빈 칸을 누르면 페널티(+100ms)<br>
+    최고 기록은 이 브라우저에 저장됩니다
+  </div>
+
+<script>
+(function () {
+  const gridEl   = document.getElementById('grid');
+  const timeEl   = document.getElementById('time');
+  const scoreEl  = document.getElementById('score');
+  const avgEl    = document.getElementById('avg');
+  const bestEl   = document.getElementById('best');
+  const msgEl    = document.getElementById('message');
+  const startBtn = document.getElementById('startBtn');
+  const sizeToggle = document.getElementById('sizeToggle');
+
+  const ROUND_MS = 30000;
+  const PENALTY_MS = 100;
+
+  let size = 3;
+  let cells = [];
+  let playing = false;
+  let litIndex = -1;
+  let litAt = 0;
+  let reactionTimes = [];   // 명중한 반응속도(ms)만 저장
+  let score = 0;
+  let penalties = 0;        // 빈 칸 클릭 횟수
+  let endAt = 0;
+  let nextTimeout = null;
+  let rafId = null;
+
+  // 최고 기록 불러오기 (낮을수록 좋음)
+  let best = parseFloat(localStorage.getItem('reflexGridBest'));
+  if (!isNaN(best)) bestEl.textContent = Math.round(best) + ' ms';
+
+  function buildGrid() {
+    gridEl.innerHTML = '';
+    gridEl.style.gridTemplateColumns = `repeat(${size}, auto)`;
+    cells = [];
+    const count = size * size;
+    const cellPx = size === 3 ? 90 : 70;
+    for (let i = 0; i < count; i++) {
+      const c = document.createElement('div');
+      c.className = 'cell';
+      c.style.width = cellPx + 'px';
+      c.style.height = cellPx + 'px';
+      c.dataset.index = i;
+      c.addEventListener('pointerdown', onCellPress);
+      gridEl.appendChild(c);
+      cells.push(c);
+    }
+  }
+
+  function onCellPress(e) {
+    if (!playing) return;
+    const idx = parseInt(e.currentTarget.dataset.index, 10);
+    if (idx === litIndex) {
+      // 명중
+      const rt = performance.now() - litAt;
+      reactionTimes.push(rt);
+      score++;
+      scoreEl.textContent = score;
+      updateAvg();
+      cells[litIndex].classList.remove('lit');
+      litIndex = -1;
+      flash(`<span class="hit">${Math.round(rt)} ms!</span>`);
+      scheduleNext(220);
+    } else {
+      // 빈 칸 — 페널티 (평균에 손해로 반영됨)
+      penalties++;
+      const c = e.currentTarget;
+      c.classList.add('miss');
+      setTimeout(() => c.classList.remove('miss'), 250);
+      updateAvg();
+      flash('<span class="bad">+100ms 페널티</span>');
+    }
+  }
+
+  // 평균 = (명중 반응속도 합 + 페널티 누적시간) / 명중 횟수
+  // 페널티가 평균을 올려서 손해가 되도록 계산
+  function effectiveAvg() {
+    if (reactionTimes.length === 0) return null;
+    const sum = reactionTimes.reduce((a, b) => a + b, 0) + penalties * PENALTY_MS;
+    return sum / reactionTimes.length;
+  }
+
+  function updateAvg() {
+    const avg = effectiveAvg();
+    avgEl.textContent = avg === null ? '— ms' : Math.round(avg) + ' ms';
+  }
+
+  function flash(html) {
+    msgEl.innerHTML = html;
+  }
+
+  function scheduleNext(delay) {
+    clearTimeout(nextTimeout);
+    nextTimeout = setTimeout(litUp, delay);
+  }
+
+  function litUp() {
+    if (!playing) return;
+    let idx;
+    do { idx = Math.floor(Math.random() * cells.length); }
+    while (idx === litIndex && cells.length > 1);
+    litIndex = idx;
+    cells[idx].classList.add('lit');
+    litAt = performance.now();
+  }
+
+  function tick() {
+    const remain = Math.max(0, endAt - performance.now());
+    timeEl.textContent = (remain / 1000).toFixed(1);
+    if (remain <= 0) { endGame(); return; }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function startGame() {
+    playing = true;
+    score = 0;
+    penalties = 0;
+    litIndex = -1;
+    reactionTimes = [];
+    scoreEl.textContent = '0';
+    avgEl.textContent = '— ms';
+    startBtn.disabled = true;
+    setToggleEnabled(false);
+    flash('집중! 🔥');
+    endAt = performance.now() + ROUND_MS;
+    tick();
+    scheduleNext(600);
+  }
+
+  function endGame() {
+    playing = false;
+    cancelAnimationFrame(rafId);
+    clearTimeout(nextTimeout);
+    if (litIndex >= 0) { cells[litIndex].classList.remove('lit'); litIndex = -1; }
+    timeEl.textContent = '0.0';
+    startBtn.disabled = false;
+    startBtn.textContent = '다시 시작';
+    setToggleEnabled(true);
+
+    const rawAvg = effectiveAvg();
+    const avg = rawAvg === null ? null : Math.round(rawAvg);
+
+    let result = `끝! 점수 <span class="hit">${score}</span>`;
+    if (avg !== null) result += ` · 평균 ${avg}ms`;
+    if (penalties > 0) result += ` · 실수 ${penalties}회`;
+
+    // 최고 기록 갱신: 충분히 플레이했고(5히트 이상) 평균이 더 낮을 때
+    if (avg !== null && score >= 5) {
+      if (isNaN(best) || avg < best) {
+        best = avg;
+        localStorage.setItem('reflexGridBest', String(best));
+        bestEl.textContent = Math.round(best) + ' ms';
+        result += ' 🏆 <span class="hit">신기록!</span>';
+      }
+    }
+    flash(result);
+  }
+
+  function setToggleEnabled(on) {
+    sizeToggle.querySelectorAll('button').forEach(b => b.disabled = !on);
+  }
+
+  sizeToggle.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn || playing) return;
+    size = parseInt(btn.dataset.size, 10);
+    sizeToggle.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+    buildGrid();
+  });
+
+  startBtn.addEventListener('click', startGame);
+
+  // 초기화
+  buildGrid();
+})();
+</script>
+</body>
+</html>
