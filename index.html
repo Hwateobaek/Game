@@ -85,6 +85,16 @@
   }
   .size-toggle button.active { background: var(--cell-hover); color: var(--text); }
 
+  .icon-btn {
+    background: var(--panel);
+    box-shadow: none;
+    padding: 11px 14px;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+  .icon-btn:hover { background: var(--cell-hover); transform: none; }
+  .icon-btn.muted { opacity: 0.55; }
+
   #grid {
     display: grid;
     gap: clamp(8px, 2.5vw, 12px);
@@ -141,6 +151,7 @@
       <button data-size="3" class="active">3×3</button>
       <button data-size="4">4×4</button>
     </div>
+    <button id="muteBtn" class="icon-btn" title="음소거 / 켜기" aria-label="음소거">🔊</button>
   </div>
 
   <div id="grid"></div>
@@ -161,6 +172,7 @@
   const msgEl    = document.getElementById('message');
   const startBtn = document.getElementById('startBtn');
   const sizeToggle = document.getElementById('sizeToggle');
+  const muteBtn  = document.getElementById('muteBtn');
 
   const ROUND_MS = 30000;
   const PENALTY_MS = 100;
@@ -184,7 +196,9 @@
   // ===== 게임 음악 (Web Audio로 실시간 합성 — 외부 파일/저작권 없음) =====
   let audioCtx = null, masterGain = null, musicTimer = null;
   let noteIndex = 0, nextNoteTime = 0;
+  let muted = localStorage.getItem('reflexGridMuted') === '1';
   const MUSIC_VOL = 0.16;
+  function targetVol() { return muted ? 0.0001 : MUSIC_VOL; }
   const TEMPO = 132;                  // BPM
   const STEP = 60 / TEMPO / 2;        // 8분음표 길이(초)
   // 밝은 펜타토닉 멜로디/베이스 — 무한 루프해도 잘 안 질리는 진행
@@ -198,7 +212,7 @@
       if (!AC) return false;          // 미지원 브라우저면 음악 없이 진행
       audioCtx = new AC();
       masterGain = audioCtx.createGain();
-      masterGain.gain.value = MUSIC_VOL;
+      masterGain.gain.value = targetVol();
       masterGain.connect(audioCtx.destination);
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -236,8 +250,8 @@
     nextNoteTime = audioCtx.currentTime + 0.06;
     const now = audioCtx.currentTime;
     masterGain.gain.cancelScheduledValues(now);
-    masterGain.gain.setValueAtTime(0.0001, now);            // 페이드 인
-    masterGain.gain.linearRampToValueAtTime(MUSIC_VOL, now + 0.3);
+    masterGain.gain.setValueAtTime(0.0001, now);            // 페이드 인 (음소거면 그대로 무음)
+    masterGain.gain.linearRampToValueAtTime(targetVol(), now + 0.3);
     scheduler();
     musicTimer = setInterval(scheduler, 25);
   }
@@ -392,7 +406,27 @@
 
   startBtn.addEventListener('click', startGame);
 
+  function updateMuteUI() {
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+    muteBtn.classList.toggle('muted', muted);
+    muteBtn.title = muted ? '음소거됨 — 켜기' : '소리 켜짐 — 음소거';
+  }
+
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    localStorage.setItem('reflexGridMuted', muted ? '1' : '0');
+    updateMuteUI();
+    // 게임 중이면 볼륨을 즉시 부드럽게 반영
+    if (audioCtx && masterGain && playing) {
+      const now = audioCtx.currentTime;
+      masterGain.gain.cancelScheduledValues(now);
+      masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+      masterGain.gain.linearRampToValueAtTime(targetVol(), now + 0.12);
+    }
+  });
+
   // 초기화
+  updateMuteUI();
   buildGrid();
 })();
 </script>
