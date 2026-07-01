@@ -15,6 +15,7 @@
     --good: #36e2a4;
     --text: #e8eaf2;
     --muted: #7a8099;
+    --gold: #ffb454;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -56,6 +57,8 @@
   .stat .value { font-size: 1.5rem; font-weight: 700; margin-top: 2px; }
   .stat .value.accent { color: var(--accent); }
   .stat .value.good { color: var(--good); }
+  .stat .value.combo { color: var(--muted); transition: color 0.15s, transform 0.15s; }
+  .stat .value.combo.hot { color: var(--gold); transform: scale(1.12); text-shadow: 0 0 12px rgba(255,180,84,0.6); }
 
   .controls { display: flex; gap: 10px; margin-bottom: 18px; align-items: center; }
   button {
@@ -130,6 +133,34 @@
   }
   #message .hit { color: var(--good); font-weight: 600; }
   #message .bad { color: var(--accent); font-weight: 600; }
+  #message .combo { color: var(--gold); font-weight: 600; }
+
+  .ranking {
+    width: min(92vw, 420px);
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 14px;
+    padding: 12px 16px;
+    margin-top: 6px;
+  }
+  .ranking-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .ranking-title { font-size: 0.9rem; font-weight: 600; }
+  .ranking-title small { color: var(--muted); font-weight: 400; font-size: 0.72rem; margin-left: 4px; }
+  .link-btn {
+    background: transparent; box-shadow: none; color: var(--muted);
+    padding: 4px 8px; font-size: 0.72rem; font-weight: 500; border-radius: 6px;
+  }
+  .link-btn:hover { background: var(--cell); color: var(--text); transform: none; }
+  .rank-list { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  .rank-list li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; background: var(--cell); border-radius: 9px; font-size: 0.86rem;
+  }
+  .rank-list li .pos { width: 22px; text-align: center; font-weight: 700; color: var(--muted); }
+  .rank-list li .sc { font-weight: 700; color: var(--good); min-width: 58px; }
+  .rank-list li .meta { color: var(--muted); font-size: 0.76rem; margin-left: auto; }
+  .rank-list li.top1 { background: linear-gradient(90deg, rgba(255,180,84,0.18), var(--cell)); }
+  .rank-list li.empty { justify-content: center; color: var(--muted); font-size: 0.8rem; }
 
   .footer { margin-top: 10px; color: var(--muted); font-size: 0.78rem; text-align: center; line-height: 1.5; }
 </style>
@@ -141,8 +172,8 @@
   <div class="stats">
     <div class="stat"><div class="label">남은 시간</div><div class="value" id="time">30.0</div></div>
     <div class="stat"><div class="label">점수</div><div class="value accent" id="score">0</div></div>
-    <div class="stat"><div class="label">평균 반응</div><div class="value" id="avg">— ms</div></div>
-    <div class="stat"><div class="label">최고 기록</div><div class="value good" id="best">— ms</div></div>
+    <div class="stat"><div class="label">콤보</div><div class="value combo" id="combo">—</div></div>
+    <div class="stat"><div class="label">최고점</div><div class="value good" id="best">—</div></div>
   </div>
 
   <div class="controls">
@@ -150,6 +181,7 @@
     <div class="size-toggle" id="sizeToggle">
       <button data-size="3" class="active">3×3</button>
       <button data-size="4">4×4</button>
+      <button data-size="5">5×5 🔥</button>
     </div>
     <button id="muteBtn" class="icon-btn" title="음소거 / 켜기" aria-label="음소거">🔊</button>
   </div>
@@ -157,9 +189,17 @@
   <div id="grid"></div>
   <div id="message">시작 버튼을 누르고 준비하세요!</div>
 
+  <div class="ranking">
+    <div class="ranking-head">
+      <span class="ranking-title">🏆 랭킹 <small>이 브라우저 기록</small></span>
+      <button id="clearRanks" class="link-btn" title="랭킹 기록 삭제">기록 지우기</button>
+    </div>
+    <ol id="rankList" class="rank-list"></ol>
+  </div>
+
   <div class="footer">
-    빠를수록 좋습니다 · 빈 칸을 누르면 페널티(+100ms)<br>
-    최고 기록은 이 브라우저에 저장됩니다 · 🔊 게임 중 배경음악 재생
+    빠르고 정확할수록, 연속으로 맞힐수록 고득점 · 빈 칸을 누르면 콤보가 끊기고 감점<br>
+    난이도가 높을수록 점수 배율↑ · 🔊 게임 중 배경음악·효과음 재생 (기록은 이 브라우저에 저장)
   </div>
 
 <script>
@@ -167,31 +207,77 @@
   const gridEl   = document.getElementById('grid');
   const timeEl   = document.getElementById('time');
   const scoreEl  = document.getElementById('score');
-  const avgEl    = document.getElementById('avg');
+  const comboEl  = document.getElementById('combo');
   const bestEl   = document.getElementById('best');
   const msgEl    = document.getElementById('message');
   const startBtn = document.getElementById('startBtn');
   const sizeToggle = document.getElementById('sizeToggle');
   const muteBtn  = document.getElementById('muteBtn');
+  const rankListEl = document.getElementById('rankList');
+  const clearRanksBtn = document.getElementById('clearRanks');
 
   const ROUND_MS = 30000;
-  const PENALTY_MS = 100;
+  const MISS_PENALTY = 120;  // 빈 칸 클릭 시 점수 감점
+  const RANK_KEY = 'reflexGridRanks';
 
   let size = 3;
   let cells = [];
   let playing = false;
   let litIndex = -1;
   let litAt = 0;
-  let reactionTimes = [];   // 명중한 반응속도(ms)만 저장
-  let score = 0;
+  let reactionTimes = [];   // 명중한 반응속도(ms)만 저장 (종료 시 평균 표시용)
+  let gameScore = 0;        // 합산 점수 (반응속도×콤보×난이도)
+  let combo = 0;            // 현재 연속 명중
+  let maxCombo = 0;         // 판 내 최고 콤보
+  let hits = 0;             // 명중 횟수
   let penalties = 0;        // 빈 칸 클릭 횟수
   let endAt = 0;
   let nextTimeout = null;
   let rafId = null;
 
-  // 최고 기록 불러오기 (낮을수록 좋음)
-  let best = parseFloat(localStorage.getItem('reflexGridBest'));
-  if (!isNaN(best)) bestEl.textContent = Math.round(best) + ' ms';
+  // ===== 점수/랭킹 유틸 =====
+  function sizeMult() { return size === 5 ? 1.75 : size === 4 ? 1.35 : 1; }
+  function comboMult() { return 1 + Math.min(Math.max(combo - 1, 0), 15) * 0.1; } // 콤보2→1.1 … 최대 2.5
+
+  function loadRanks() {
+    try { return JSON.parse(localStorage.getItem(RANK_KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function bestScore() { const r = loadRanks(); return r.length ? r[0].score : 0; }
+  function updateBest() {
+    const b = bestScore();
+    bestEl.textContent = b ? b.toLocaleString() : '—';
+  }
+  function renderRanks() {
+    const ranks = loadRanks();
+    rankListEl.innerHTML = '';
+    if (ranks.length === 0) {
+      rankListEl.innerHTML = '<li class="empty">아직 기록이 없어요 — 한 판 해보세요!</li>';
+      return;
+    }
+    const medals = ['🥇', '🥈', '🥉'];
+    ranks.slice(0, 5).forEach((r, i) => {
+      const li = document.createElement('li');
+      if (i === 0) li.className = 'top1';
+      li.innerHTML =
+        `<span class="pos">${medals[i] || (i + 1)}</span>` +
+        `<span class="sc">${r.score.toLocaleString()}</span>` +
+        `<span class="meta">${r.size}×${r.size} · 최고 ${r.combo}콤보</span>`;
+      rankListEl.appendChild(li);
+    });
+  }
+  // 이번 판 기록 저장 후, 진입 순위(1-based) 반환 (없으면 0)
+  function saveRank() {
+    if (hits < 3 || gameScore <= 0) return 0;
+    const ranks = loadRanks();
+    const entry = { score: gameScore, size: size, combo: maxCombo, date: Date.now() };
+    ranks.push(entry);
+    ranks.sort((a, b) => b.score - a.score);
+    const top = ranks.slice(0, 8);
+    localStorage.setItem(RANK_KEY, JSON.stringify(top));
+    const pos = top.indexOf(entry);
+    return pos === -1 ? 0 : pos + 1;
+  }
 
   // ===== 게임 음악 (Web Audio로 실시간 합성 — 외부 파일/저작권 없음) =====
   let audioCtx = null, masterGain = null, musicTimer = null;
@@ -290,6 +376,34 @@
     });
   }
 
+  // ===== 효과음 (배경음악과 별개로 즉시 재생, 음소거 시 무음) =====
+  function envTone(freq, start, dur, type, vol) {
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, start);
+    g.gain.setValueAtTime(0, start);
+    g.gain.linearRampToValueAtTime(vol, start + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    osc.connect(g); g.connect(audioCtx.destination);
+    osc.start(start); osc.stop(start + dur + 0.03);
+    return osc;
+  }
+  function sfxHit() {
+    if (muted || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const semis = Math.min(combo - 1, 14);           // 콤보가 오를수록 반음씩 상승
+    const base = 620 * Math.pow(2, semis / 12);
+    envTone(base, now, 0.10, 'square', 0.16);
+    envTone(base * 1.5, now + 0.015, 0.09, 'square', 0.09);
+  }
+  function sfxMiss() {
+    if (muted || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const o = envTone(150, now, 0.20, 'sawtooth', 0.15);
+    o.frequency.exponentialRampToValueAtTime(80, now + 0.2);  // 하강 buzz
+  }
+
   function buildGrid() {
     gridEl.innerHTML = '';
     gridEl.style.gridTemplateColumns = `repeat(${size}, 1fr)`;  // 칸은 CSS가 반응형으로 크기 결정
@@ -309,38 +423,50 @@
     if (!playing) return;
     const idx = parseInt(e.currentTarget.dataset.index, 10);
     if (idx === litIndex) {
-      // 명중
+      // ===== 명중 =====
       const rt = performance.now() - litAt;
       reactionTimes.push(rt);
-      score++;
-      scoreEl.textContent = score;
-      updateAvg();
+      hits++;
+      combo++;
+      if (combo > maxCombo) maxCombo = combo;
+      const speedPts = Math.min(650, Math.max(60, Math.round(650 - rt * 0.85)));
+      const mult = comboMult();
+      const gained = Math.round(speedPts * mult * sizeMult());
+      gameScore += gained;
+      updateScore();
+      updateCombo();
       cells[litIndex].classList.remove('lit');
       litIndex = -1;
-      flash(`<span class="hit">${Math.round(rt)} ms!</span>`);
-      scheduleNext(220);
+      sfxHit();
+      let m = `<span class="hit">+${gained.toLocaleString()}</span>`;
+      if (combo >= 2) m += ` <span class="combo">×${mult.toFixed(1)} · ${combo}콤보 🔥</span>`;
+      flash(m);
+      scheduleNext(200);
     } else {
-      // 빈 칸 — 페널티 (평균에 손해로 반영됨)
+      // ===== 빈 칸 — 콤보 끊김 + 감점 =====
       penalties++;
+      combo = 0;
+      gameScore = Math.max(0, gameScore - MISS_PENALTY);
+      updateScore();
+      updateCombo();
       const c = e.currentTarget;
       c.classList.add('miss');
       setTimeout(() => c.classList.remove('miss'), 250);
-      updateAvg();
-      flash('<span class="bad">+100ms 페널티</span>');
+      sfxMiss();
+      flash(`<span class="bad">−${MISS_PENALTY} · 콤보 끊김</span>`);
     }
   }
 
-  // 평균 = (명중 반응속도 합 + 페널티 누적시간) / 명중 횟수
-  // 페널티가 평균을 올려서 손해가 되도록 계산
-  function effectiveAvg() {
-    if (reactionTimes.length === 0) return null;
-    const sum = reactionTimes.reduce((a, b) => a + b, 0) + penalties * PENALTY_MS;
-    return sum / reactionTimes.length;
+  function updateScore() { scoreEl.textContent = gameScore.toLocaleString(); }
+  function updateCombo() {
+    comboEl.textContent = combo > 0 ? combo + '×' : '—';
+    comboEl.classList.toggle('hot', combo >= 5);
   }
 
-  function updateAvg() {
-    const avg = effectiveAvg();
-    avgEl.textContent = avg === null ? '— ms' : Math.round(avg) + ' ms';
+  // 명중 반응속도만 사용한 평균(ms) — 종료 화면 표시용
+  function avgReaction() {
+    if (reactionTimes.length === 0) return null;
+    return reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length;
   }
 
   function flash(html) {
@@ -371,12 +497,15 @@
 
   function startGame() {
     playing = true;
-    score = 0;
+    gameScore = 0;
+    combo = 0;
+    maxCombo = 0;
+    hits = 0;
     penalties = 0;
     litIndex = -1;
     reactionTimes = [];
-    scoreEl.textContent = '0';
-    avgEl.textContent = '— ms';
+    updateScore();
+    updateCombo();
     startBtn.disabled = true;
     setToggleEnabled(false);
     flash('집중! 🔥');
@@ -392,31 +521,32 @@
     cancelAnimationFrame(rafId);
     clearTimeout(nextTimeout);
     if (litIndex >= 0) { cells[litIndex].classList.remove('lit'); litIndex = -1; }
+    combo = 0;
+    updateCombo();
     timeEl.textContent = '0.0';
     startBtn.disabled = false;
     startBtn.textContent = '다시 시작';
     setToggleEnabled(true);
 
-    const rawAvg = effectiveAvg();
-    const avg = rawAvg === null ? null : Math.round(rawAvg);
+    const avgMs = avgReaction();
+    let result = `끝! <span class="hit">${gameScore.toLocaleString()}점</span>`;
+    if (hits > 0) result += ` · ${hits}개 명중`;
+    if (avgMs !== null) result += ` · 평균 ${Math.round(avgMs)}ms`;
+    if (maxCombo >= 2) result += ` · 최고 <span class="combo">${maxCombo}콤보</span>`;
 
-    let result = `끝! 점수 <span class="hit">${score}</span>`;
-    if (avg !== null) result += ` · 평균 ${avg}ms`;
-    if (penalties > 0) result += ` · 실수 ${penalties}회`;
-
-    // 최고 기록 갱신: 충분히 플레이했고(5히트 이상) 평균이 더 낮을 때
+    // 랭킹 저장 & 순위 표시
+    const rank = saveRank();
     let newRecord = false;
-    if (avg !== null && score >= 5) {
-      if (isNaN(best) || avg < best) {
-        best = avg;
-        localStorage.setItem('reflexGridBest', String(best));
-        bestEl.textContent = Math.round(best) + ' ms';
-        result += ' 🏆 <span class="hit">신기록!</span>';
-        newRecord = true;
-      }
+    if (rank === 1) {
+      result += ' 🏆 <span class="hit">1위 신기록!</span>';
+      newRecord = true;
+    } else if (rank > 0) {
+      result += ` · 랭킹 <span class="combo">${rank}위</span> 진입!`;
     }
+    updateBest();
+    renderRanks();
     flash(result);
-    playEndJingle(newRecord);           // 종료 징글: 신기록이면 승리 팡파레
+    playEndJingle(newRecord);           // 종료 징글: 1위 신기록이면 승리 팡파레
   }
 
   function setToggleEnabled(on) {
@@ -452,8 +582,19 @@
     }
   });
 
+  clearRanksBtn.addEventListener('click', () => {
+    if (loadRanks().length === 0) return;
+    if (confirm('저장된 랭킹 기록을 모두 지울까요?')) {
+      localStorage.removeItem(RANK_KEY);
+      updateBest();
+      renderRanks();
+    }
+  });
+
   // 초기화
   updateMuteUI();
+  updateBest();
+  renderRanks();
   buildGrid();
 })();
 </script>
