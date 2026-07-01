@@ -5,7 +5,7 @@
 ## 플레이
 
 - **로컬:** `index.html` 더블클릭
-- **온라인:** https://hwateobaek.github.io/tesmparary/
+- **온라인:** https://hwateobaek.github.io/Game/
 
 ## 기능
 
@@ -21,4 +21,4 @@
 ## 배포 (GitHub Pages)
 
 이 저장소의 **Settings → Pages → Branch: `main` / `/ (root)`** 선택 후 저장하면
-`https://hwateobaek.github.io/tesmparary/` 에서 플레이할 수 있습니다.
+`https://hwateobaek.github.io/Game/` 에서 플레이할 수 있습니다.
