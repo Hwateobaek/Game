@@ -219,6 +219,18 @@
   .rank-list li .meta { color: var(--muted); font-size: 0.76rem; margin-left: auto; }
   .rank-list li.top1 { background: linear-gradient(90deg, rgba(255,180,84,0.18), var(--cell)); }
   .rank-list li.empty { justify-content: center; color: var(--muted); font-size: 0.8rem; }
+  .rank-list li .who { font-weight: 600; color: var(--text); max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  #nickModal { position: fixed; inset: 0; z-index: 110; background: rgba(255,235,150,0.9); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); display: none; align-items: center; justify-content: center; padding: 20px; }
+  #nickModal.show { display: flex; }
+  .nick-card { background: var(--panel); border: 1px solid rgba(214,170,60,0.35); border-radius: 18px; padding: 24px 22px; width: min(90vw, 360px); text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+  .nick-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 4px; }
+  .nick-sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 14px; }
+  .nick-sub #nickScore { color: var(--good); font-weight: 700; }
+  #nickInput { width: 100%; padding: 12px 14px; border: 2px solid var(--cell-hover); border-radius: 10px; font-size: 1rem; background: #fff; color: var(--text); margin-bottom: 14px; text-align: center; }
+  #nickInput:focus { outline: none; border-color: var(--accent); }
+  .nick-btns { display: flex; gap: 10px; }
+  .nick-btns button { flex: 1; }
 
   .footer { margin-top: 10px; color: var(--muted); font-size: 0.78rem; text-align: center; line-height: 1.5; }
   .copyright { margin-top: 8px; margin-bottom: 4px; color: var(--muted); font-size: 0.75rem; text-align: center; opacity: 0.85; }
@@ -383,6 +395,26 @@
       <button id="clearRanks" class="link-btn" title="랭킹 기록 삭제">기록 지우기</button>
     </div>
     <ol id="rankList" class="rank-list"></ol>
+  </div>
+
+  <div class="ranking">
+    <div class="ranking-head">
+      <span class="ranking-title">🌐 전체 랭킹 <small>온라인 · 모든 기기 공유</small></span>
+      <button id="refreshOnlineBtn" class="link-btn" title="새로고침">새로고침</button>
+    </div>
+    <ol id="onlineList" class="rank-list"><li class="empty">온라인 랭킹 준비 중…</li></ol>
+  </div>
+
+  <div id="nickModal">
+    <div class="nick-card">
+      <div class="nick-title">🌐 전체 랭킹 등록</div>
+      <div class="nick-sub"><span id="nickScore">0점</span> · 닉네임을 입력하세요</div>
+      <input id="nickInput" type="text" maxlength="16" placeholder="닉네임 (최대 16자)" autocomplete="off">
+      <div class="nick-btns">
+        <button id="nickSkip" class="ghost-btn">건너뛰기</button>
+        <button id="nickOk">등록</button>
+      </div>
+    </div>
   </div>
 
   <img id="pikaHappy" class="mascot" src="../assets/pika-happy.png" alt="" aria-hidden="true">
@@ -802,6 +834,11 @@
     renderRanks();
     flash(result);
     playEndJingle(newRecord);           // 종료 징글: 1위 신기록이면 승리 팡파레
+
+    // 개인 신기록이면 전체(온라인) 랭킹 등록 유도
+    if (newRecord && hits >= 3) {
+      promptOnlineRegister(gameScore, `${size}×${size} · 최고 ${maxCombo}콤보`);
+    }
   }
 
   function setToggleEnabled(on) {
@@ -896,13 +933,116 @@
     introOverlay.classList.add('hidden');
   });
 
+  // ===== 공유(온라인) 랭킹 UI =====
+  const onlineListEl = document.getElementById('onlineList');
+  const refreshOnlineBtn = document.getElementById('refreshOnlineBtn');
+  const nickModal = document.getElementById('nickModal');
+  const nickInput = document.getElementById('nickInput');
+  const nickOk = document.getElementById('nickOk');
+  const nickSkip = document.getElementById('nickSkip');
+  const nickScoreEl = document.getElementById('nickScore');
+  const NICK_KEY = 'reflexNick';
+  let pendingSubmit = null;
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  async function refreshOnline() {
+    if (!window.SharedRank) { onlineListEl.innerHTML = '<li class="empty">온라인 랭킹 준비 중…</li>'; return; }
+    onlineListEl.innerHTML = '<li class="empty">불러오는 중…</li>';
+    try {
+      const rows = await window.SharedRank.top('reflex', 10);
+      if (!rows.length) { onlineListEl.innerHTML = '<li class="empty">아직 온라인 기록이 없어요 — 1등에 도전!</li>'; return; }
+      const medals = ['🥇','🥈','🥉'];
+      onlineListEl.innerHTML = '';
+      rows.forEach((r, i) => {
+        const li = document.createElement('li');
+        if (i === 0) li.className = 'top1';
+        li.innerHTML =
+          `<span class="pos">${medals[i] || (i + 1)}</span>` +
+          `<span class="who">${escapeHtml(r.name || '익명')}</span>` +
+          `<span class="sc">${(r.score || 0).toLocaleString()}</span>` +
+          `<span class="meta">${escapeHtml(r.meta || '')}</span>`;
+        onlineListEl.appendChild(li);
+      });
+    } catch (e) {
+      onlineListEl.innerHTML = '<li class="empty">온라인 랭킹을 불러올 수 없어요</li>';
+    }
+  }
+  refreshOnlineBtn.addEventListener('click', refreshOnline);
+  window.addEventListener('sharedrank-ready', refreshOnline);
+
+  // 신기록 시 닉네임 입력받아 온라인 등록
+  function promptOnlineRegister(score, meta) {
+    if (!window.SharedRank) return;
+    pendingSubmit = { score, meta };
+    nickScoreEl.textContent = score.toLocaleString() + '점';
+    nickInput.value = localStorage.getItem(NICK_KEY) || '';
+    nickModal.classList.add('show');
+    setTimeout(() => nickInput.focus(), 50);
+  }
+  async function doRegister() {
+    if (!pendingSubmit) { nickModal.classList.remove('show'); return; }
+    const name = (nickInput.value || '').trim().slice(0, 16) || '익명';
+    localStorage.setItem(NICK_KEY, name);
+    const info = pendingSubmit; pendingSubmit = null;
+    nickModal.classList.remove('show');
+    try { await window.SharedRank.submit('reflex', name, info.score, info.meta); await refreshOnline(); }
+    catch (e) { console.warn('submit failed', e); }
+  }
+  nickOk.addEventListener('click', doRegister);
+  nickInput.addEventListener('keydown', e => { if (e.key === 'Enter') doRegister(); });
+  nickSkip.addEventListener('click', () => { pendingSubmit = null; nickModal.classList.remove('show'); });
+
   // 초기화
   updateMuteUI();
   updateBest();
   renderRanks();
+  refreshOnline();
   buildSparks();
   buildGrid();
 })();
+</script>
+
+<script type="module">
+  // ===== 공유 랭킹 (Firebase Firestore) =====
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+  import { getFirestore, collection, addDoc, query, orderBy, limit, getDocs }
+    from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyADhX27Bue4USE3V1MIFeH4EHzVeiw0PCM",
+    authDomain: "game-73920.firebaseapp.com",
+    projectId: "game-73920",
+    storageBucket: "game-73920.firebasestorage.app",
+    messagingSenderId: "916317851183",
+    appId: "1:916317851183:web:4abb2e6c70e6bd6f21c0da",
+    measurementId: "G-9EBBS6MZSD"
+  };
+
+  try {
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    window.SharedRank = {
+      async submit(game, name, score, meta) {
+        await addDoc(collection(db, 'leaderboards', game, 'scores'), {
+          name: String(name || '익명').slice(0, 16),
+          score: Math.max(0, Math.round(score)),
+          meta: String(meta || '').slice(0, 40),
+          ts: Date.now()
+        });
+      },
+      async top(game, n = 10) {
+        const q = query(collection(db, 'leaderboards', game, 'scores'), orderBy('score', 'desc'), limit(n));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => d.data());
+      }
+    };
+  } catch (e) {
+    console.warn('SharedRank init failed', e);
+  }
+  window.dispatchEvent(new Event('sharedrank-ready'));
 </script>
 </body>
 </html>
