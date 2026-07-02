@@ -10,8 +10,8 @@
     --bg: #fff3c4;                 /* 크림-노랑 베이스 */
     --bg2: #ffe07a;                /* 아래쪽 진한 노랑 */
     --panel: #fffdf7;              /* 카드(거의 흰색) */
-    --cell: #fdeec0;              /* 기본 칸 (연노랑) */
-    --cell-hover: #fbe49a;
+    --cell: #f6d98f;              /* 기본 칸 (배경과 구분되는 골드-탄) */
+    --cell-hover: #f0cd74;
     --accent: #f5a800;            /* 피카츄 골드 (버튼/불빛) */
     --accent-ink: #5a3d00;        /* 골드 위 진한 갈색 글씨 */
     --accent-glow: rgba(245, 168, 0, 0.55);
@@ -77,8 +77,7 @@
   .stat .value { font-size: 1.5rem; font-weight: 700; margin-top: 2px; }
   .stat .value.accent { color: var(--accent); }
   .stat .value.good { color: var(--good); }
-  .stat .value.combo { color: var(--muted); transition: color 0.15s, transform 0.15s; }
-  .stat .value.combo.hot { color: var(--gold); transform: scale(1.12); text-shadow: 0 0 12px rgba(255,180,84,0.6); }
+  .stat .value.combo { color: var(--muted); transition: color 0.18s, transform 0.18s, text-shadow 0.18s; }
 
   .controls { display: flex; gap: 10px; margin-bottom: 18px; align-items: center; flex-wrap: wrap; justify-content: center; }
   button {
@@ -138,8 +137,8 @@
     border-radius: 14px;
     cursor: pointer;
     transition: background 0.06s, transform 0.06s;
-    border: 1px solid rgba(214, 170, 60, 0.28);
-    box-shadow: inset 0 -2px 4px rgba(214,170,60,0.12);
+    border: 1px solid rgba(190, 145, 30, 0.5);
+    box-shadow: inset 0 -3px 5px rgba(190,145,30,0.18);
   }
   .cell:hover { background: var(--cell-hover); }
   .cell.lit {
@@ -313,7 +312,7 @@
       <h2>반사신경 테스트</h2>
       <p class="intro-lead">반짝이는 칸을 누구보다 빠르게 눌러 최고 점수에 도전하세요!</p>
       <ul class="intro-rules">
-        <li>⏱️ <b>한 판 30초</b> — 칸이 반짝이면 최대한 빨리 클릭</li>
+        <li>⏱️ <b>한 판 20초</b> — 칸이 반짝이면 최대한 빨리 클릭</li>
         <li>⚡ <b>빠를수록 고득점</b> — 반응속도에 비례해 점수 획득</li>
         <li>🔥 <b>콤보 보너스</b> — 연속 명중 시 점수 배율↑ (최대 2.5×)</li>
         <li>❌ <b>빈 칸 주의</b> — 잘못 누르면 콤보가 끊기고 감점</li>
@@ -325,10 +324,10 @@
   </div>
 
   <h1>반사신경 테스트 <img src="../assets/pikachu.png" class="pika-icon" alt="피카츄"></h1>
-  <div class="subtitle">반짝이는 칸을 최대한 빠르게 누르세요 · 한 판 30초</div>
+  <div class="subtitle">반짝이는 칸을 최대한 빠르게 누르세요 · 한 판 20초</div>
 
   <div class="stats">
-    <div class="stat"><div class="label">남은 시간</div><div class="value" id="time">30.0</div></div>
+    <div class="stat"><div class="label">남은 시간</div><div class="value" id="time">20.0</div></div>
     <div class="stat"><div class="label">점수</div><div class="value accent" id="score">0</div></div>
     <div class="stat"><div class="label">콤보</div><div class="value combo" id="combo">—</div></div>
     <div class="stat"><div class="label">최고점</div><div class="value good" id="best">—</div></div>
@@ -386,7 +385,7 @@
   const clearRanksBtn = document.getElementById('clearRanks');
   const electricEl = document.getElementById('electric');
 
-  const ROUND_MS = 30000;
+  const ROUND_MS = 20000;
   const MISS_PENALTY = 120;  // 빈 칸 클릭 시 점수 감점
   const RANK_KEY = 'reflexGridRanks';
 
@@ -611,7 +610,7 @@
       litIndex = -1;
       sfxHit();
       let m = `<span class="hit">+${gained.toLocaleString()}</span>`;
-      if (combo >= 2) m += ` <span class="combo">×${mult.toFixed(1)} · ${combo}콤보 🔥</span>`;
+      if (combo >= 2) m += ` <span class="combo">×${mult.toFixed(1)}${combo >= 10 ? ` · ${combo}콤보 🔥` : ''}</span>`;
       flash(m);
       scheduleNext(200);
     } else {
@@ -631,12 +630,25 @@
 
   function updateScore() { scoreEl.textContent = gameScore.toLocaleString(); }
   function updateCombo() {
-    comboEl.textContent = combo > 0 ? combo + '×' : '—';
-    const hot = combo >= 5;
-    comboEl.classList.toggle('hot', hot);
-    // 콤보가 높을 때 배경 전기 효과 (일시정지/종료 시엔 끔)
-    const charged = hot && playing && !paused;
-    electricEl.classList.toggle('active', charged);
+    // 콤보 숫자는 10부터 표시. 10 단위(10,20,30…)마다 연빨강→진빨강으로 점점 강조.
+    if (combo >= 10) {
+      comboEl.textContent = combo + '×';
+      const level = Math.floor(combo / 10);          // 1:10~19, 2:20~29 …
+      const t = Math.min((level - 1) / 5, 1);         // 0(연빨강) → 1(진빨강), 60콤보에서 최대
+      const r = Math.round(255 + (150 - 255) * t);    // 255 → 150
+      const g = Math.round(120 + (0   - 120) * t);    // 120 → 0
+      const b = Math.round(110 + (0   - 110) * t);    // 110 → 0
+      comboEl.style.color = `rgb(${r},${g},${b})`;
+      comboEl.style.textShadow = `0 0 ${8 + 12 * t}px rgba(${r},${g},${b},${0.4 + 0.5 * t})`;
+      comboEl.style.transform = `scale(${1.08 + 0.16 * t})`;
+    } else {
+      comboEl.textContent = '—';
+      comboEl.style.color = '';
+      comboEl.style.textShadow = '';
+      comboEl.style.transform = '';
+    }
+    // 배경 전기 효과 (콤보 5+/10+), 일시정지·종료 시엔 끔
+    electricEl.classList.toggle('active', combo >= 5 && playing && !paused);
     electricEl.classList.toggle('hi', combo >= 10 && playing && !paused);
   }
 
