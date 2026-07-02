@@ -79,7 +79,26 @@
   .stat .value { font-size: 1.5rem; font-weight: 700; margin-top: 2px; }
   .stat .value.accent { color: var(--accent); }
   .stat .value.good { color: var(--good); }
-  .stat .value.combo { color: var(--muted); transition: color 0.18s, transform 0.18s, text-shadow 0.18s; }
+  .stat .value.combo { color: var(--muted); transition: color 0.15s, transform 0.15s; }
+  .stat .value.combo.hot { color: var(--gold); transform: scale(1.12); text-shadow: 0 0 12px rgba(255,180,84,0.6); }
+
+  /* 큰 콤보 시각화 팝업 (콤보 10부터, 10단위마다 연빨강→진빨강) */
+  #comboPop {
+    position: fixed; top: 30%; left: 50%; transform: translate(-50%,-50%);
+    z-index: 45; pointer-events: none;
+    display: flex; align-items: baseline; gap: 10px;
+    opacity: 0; transition: opacity 0.18s ease;
+    font-weight: 900; font-style: italic;
+  }
+  #comboPop.show { opacity: 0.97; }
+  #comboPopNum { font-size: clamp(3rem, 14vw, 6rem); line-height: 1; color: #ff5a2a; -webkit-text-stroke: 2px #fff; paint-order: stroke fill; }
+  .combo-word { font-size: clamp(1.1rem, 4.5vw, 2rem); color: #ffcf33; -webkit-text-stroke: 1.5px #a35200; paint-order: stroke fill; letter-spacing: 2px; }
+  @keyframes comboPunch {
+    0%   { transform: translate(-50%,-50%) scale(1.6) rotate(-3deg); }
+    55%  { transform: translate(-50%,-50%) scale(0.9) rotate(1deg); }
+    100% { transform: translate(-50%,-50%) scale(1) rotate(0deg); }
+  }
+  #comboPop.punch { animation: comboPunch 0.26s cubic-bezier(.2,.8,.3,1); }
 
   .controls { display: flex; gap: 10px; margin-bottom: 18px; align-items: center; flex-wrap: wrap; justify-content: center; }
   button {
@@ -364,6 +383,7 @@
   <img id="pikaAngry" class="mascot" src="../assets/pika-angry.png" alt="" aria-hidden="true">
 
   <div id="electric" aria-hidden="true"></div>
+  <div id="comboPop" aria-hidden="true"><span id="comboPopNum">0</span><span class="combo-word">COMBO</span></div>
 
   <div class="footer">
     빠르고 정확할수록, 연속으로 맞힐수록 고득점 · 빈 칸을 누르면 콤보가 끊기고 감점<br>
@@ -613,6 +633,7 @@
       cells[litIndex].classList.remove('lit');
       litIndex = -1;
       sfxHit();
+      if (combo >= 10) showComboPop(combo);     // 콤보 10부터 큰 팝업 시각화
       let m = `<span class="hit">+${gained.toLocaleString()}</span>`;
       if (combo >= 2) m += ` <span class="combo">×${mult.toFixed(1)}${combo >= 10 ? ` · ${combo}콤보 🔥` : ''}</span>`;
       flash(m);
@@ -628,33 +649,38 @@
       c.classList.add('miss');
       setTimeout(() => c.classList.remove('miss'), 250);
       sfxMiss();
+      hideComboPop();                            // 콤보 끊기면 팝업 숨김
       flash(`<span class="bad">−${MISS_PENALTY} · 콤보 끊김</span>`);
     }
   }
 
   function updateScore() { scoreEl.textContent = gameScore.toLocaleString(); }
   function updateCombo() {
-    // 콤보 숫자는 10부터 표시. 10 단위(10,20,30…)마다 연빨강→진빨강으로 점점 강조.
-    if (combo >= 10) {
-      comboEl.textContent = combo + '×';
-      const level = Math.floor(combo / 10);          // 1:10~19, 2:20~29 …
-      const t = Math.min((level - 1) / 5, 1);         // 0(연빨강) → 1(진빨강), 60콤보에서 최대
-      const r = Math.round(255 + (150 - 255) * t);    // 255 → 150
-      const g = Math.round(120 + (0   - 120) * t);    // 120 → 0
-      const b = Math.round(110 + (0   - 110) * t);    // 110 → 0
-      comboEl.style.color = `rgb(${r},${g},${b})`;
-      comboEl.style.textShadow = `0 0 ${8 + 12 * t}px rgba(${r},${g},${b},${0.4 + 0.5 * t})`;
-      comboEl.style.transform = `scale(${1.08 + 0.16 * t})`;
-    } else {
-      comboEl.textContent = '—';
-      comboEl.style.color = '';
-      comboEl.style.textShadow = '';
-      comboEl.style.transform = '';
-    }
+    // 스탯 콤보 숫자: 이전과 동일하게 점수 옆에 항상 표시
+    comboEl.textContent = combo > 0 ? combo + '×' : '—';
+    comboEl.classList.toggle('hot', combo >= 5);
     // 배경 전기 효과 (콤보 5+/10+), 일시정지·종료 시엔 끔
     electricEl.classList.toggle('active', combo >= 5 && playing && !paused);
     electricEl.classList.toggle('hi', combo >= 10 && playing && !paused);
   }
+
+  // ===== 큰 콤보 팝업 (사진처럼 화면에 시각화) =====
+  const comboPop = document.getElementById('comboPop');
+  const comboPopNum = document.getElementById('comboPopNum');
+  function comboRed(c) {
+    const level = Math.floor(c / 10);                 // 1:10~19, 2:20~29 …
+    const t = Math.min((level - 1) / 5, 1);           // 0(연빨강) → 1(진빨강)
+    return { r: Math.round(255 + (150-255)*t), g: Math.round(120 + (0-120)*t), b: Math.round(110 + (0-110)*t), t };
+  }
+  function showComboPop(c) {
+    const { r, g, b, t } = comboRed(c);
+    comboPopNum.textContent = c;
+    comboPopNum.style.color = `rgb(${r},${g},${b})`;
+    comboPopNum.style.textShadow = `0 4px 0 rgba(110,0,0,0.45), 0 0 ${18 + 16*t}px rgba(${r},${g},${b},0.8)`;
+    comboPop.classList.add('show');
+    comboPop.classList.remove('punch'); void comboPop.offsetWidth; comboPop.classList.add('punch'); // 펀치 재생
+  }
+  function hideComboPop() { comboPop.classList.remove('show', 'punch'); }
 
   // 전기 스파크 요소를 한 번만 생성 (⚡/✨ 랜덤 배치)
   function buildSparks() {
@@ -721,6 +747,7 @@
     reactionTimes = [];
     updateScore();
     updateCombo();
+    hideComboPop();
     startBtn.disabled = true;
     setToggleEnabled(false);
     flash('집중! 🔥');
@@ -744,6 +771,7 @@
     if (litIndex >= 0) { cells[litIndex].classList.remove('lit'); litIndex = -1; }
     combo = 0;
     updateCombo();
+    hideComboPop();
     timeEl.textContent = '0.0';
     startBtn.disabled = false;
     startBtn.textContent = '다시 시작';
@@ -784,6 +812,7 @@
     gridEl.classList.add('paused');     // 그리드 흐리게 + 클릭 차단
     pauseBtn.textContent = '▶ 계속';
     updateCombo();                      // 전기 효과 잠시 끔
+    hideComboPop();
     flash('⏸ 일시정지');
   }
 
