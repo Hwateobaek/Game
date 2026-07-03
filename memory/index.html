@@ -67,6 +67,7 @@
   }
   .card-back { background: linear-gradient(145deg, #ffcf4a, var(--accent)); border: 2px solid #d98e00; color: #fff; text-shadow: 0 1px 2px rgba(120,80,0,0.4); }
   .card-front { background: var(--panel); border: 2px solid var(--cell-hover); transform: rotateY(180deg); }
+  .card-front img { max-width: 90%; max-height: 90%; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
   .card.matched .card-front { background: #d8f5e4; border-color: var(--good); }
   .card.matched { animation: matchPop 0.4s ease; }
   @keyframes matchPop { 0% { transform: scale(1); } 50% { transform: scale(1.09); } 100% { transform: scale(1); } }
@@ -322,7 +323,11 @@
   // =========================================================
   // ----- 기억력 카드 매칭 -----
   const movesEl = $('moves'), pairsEl = $('pairs'), diffToggle = $('diffToggle');
-  const POOL = ['🍓','🌸','🎀','🐱','🦋','🌈','⭐','🍰','🐰','🍒','🌷','🦄','🍑','🐣','🌻','🍭'];
+  // 피카츄 포즈 카드 (assets/cards/cXX.png — c27, c41은 라벨 자국이 있어 제외)
+  const POOL = ['c01','c02','c03','c04','c05','c06','c07','c08','c09','c10',
+                'c11','c12','c13','c14','c15','c16','c17','c18','c19','c20',
+                'c21','c22','c23','c24','c25','c26','c28','c29','c30','c31',
+                'c32','c33','c34','c35','c36','c37','c38','c39','c40','c42','c43','c44'];
   const DIFF_LABEL = { 6: '쉬움', 8: '보통', 10: '어려움' };
   const BASE = { 6: 4000, 8: 7000, 10: 11000 };
   let selectedPairs = 6, totalPairs = 6, cards = [];
@@ -351,7 +356,7 @@
     cards = deck.map((emoji, i) => {
       const el = document.createElement('div');
       el.className = 'card'; el.dataset.i = i;
-      el.innerHTML = `<div class="card-inner"><div class="card-face card-back">⚡</div><div class="card-face card-front">${emoji}</div></div>`;
+      el.innerHTML = `<div class="card-inner"><div class="card-face card-back">⚡</div><div class="card-face card-front"><img src="../assets/cards/${emoji}.png" alt="" draggable="false"></div></div>`;
       el.addEventListener('pointerdown', () => onCardClick(i));
       gameEl.appendChild(el);
       return { emoji, el, matched: false };
