@@ -70,7 +70,6 @@
   }
   .mole {
     position: absolute; left: 8%; bottom: -100%; width: 84%; height: 92%;
-    background-image: url("../assets/pika-happy.png");
     background-size: contain; background-repeat: no-repeat; background-position: bottom center;
     transition: bottom 0.12s ease-out;
     pointer-events: none;
@@ -162,7 +161,7 @@
       <ul class="intro-rules">
         <li>🔨 <b>탭!</b> — 올라온 피카츄를 눌러 점수 획득</li>
         <li>🔥 <b>콤보</b> — 연속으로 잡으면 점수 배율 ↑</li>
-        <li>⏱️ <b>한 판 30초</b> — 시간이 지날수록 점점 빨라져요</li>
+        <li>⏱️ <b>한 판 20초</b> — 시간이 지날수록 점점 빨라져요</li>
         <li>🏆 <b>랭킹</b> — 최고 기록이 저장돼 순위에 올라요</li>
       </ul>
       <button id="introBtn">게임 시작하기 →</button>
@@ -170,10 +169,10 @@
   </div>
 
   <h1>피카츄 잡기 <img src="../assets/pikachu.png" class="pika-icon" alt="피카츄"></h1>
-  <div class="subtitle">튀어나오는 피카츄를 재빨리 잡으세요 · 한 판 30초</div>
+  <div class="subtitle">튀어나오는 피카츄를 재빨리 잡으세요 · 한 판 20초</div>
 
   <div class="stats">
-    <div class="stat"><div class="label">남은 시간</div><div class="value" id="time">30.0</div></div>
+    <div class="stat"><div class="label">남은 시간</div><div class="value" id="time">20.0</div></div>
     <div class="stat"><div class="label">점수</div><div class="value accent" id="score">0</div></div>
     <div class="stat"><div class="label">콤보</div><div class="value" id="combo">—</div></div>
     <div class="stat"><div class="label">최고점</div><div class="value good" id="best">—</div></div>
@@ -187,6 +186,7 @@
       <button data-diff="easy">느긋</button>
       <button data-diff="normal" class="active">보통</button>
       <button data-diff="hard">빠름</button>
+      <button data-diff="ultra">초스피드</button>
     </div>
     <button id="muteBtn" class="icon-btn" title="음소거 / 켜기" aria-label="음소거">🔊</button>
   </div>
@@ -330,15 +330,24 @@
   // =========================================================
   // ----- 피카츄 잡기 (두더지 잡기) -----
   const comboEl = $('combo'), diffToggle = $('diffToggle');   // scoreEl은 상단 공통 참조 사용
-  const ROUND = 30000;
+  const ROUND = 20000;
   const DIFFS = {
-    easy:   { spawn: 950, show: 1150, label: '느긋' },
-    normal: { spawn: 720, show: 880,  label: '보통' },
-    hard:   { spawn: 540, show: 680,  label: '빠름' }
+    easy:   { spawn: 1250, show: 1550, label: '느긋' },     // 기존 느긋보다 더 느리게
+    normal: { spawn: 950,  show: 1150, label: '보통' },     // 기존 느긋 속도
+    hard:   { spawn: 720,  show: 880,  label: '빠름' },     // 기존 보통 속도
+    ultra:  { spawn: 540,  show: 680,  label: '초스피드' }  // 기존 빠름 속도
   };
   let selectedDiff = 'normal';
   let holes = [], score = 0, combo = 0, maxCombo = 0;
   let remaining = ROUND, endAt = 0, rafId = null, spawnT = null;
+
+  // 카드 매칭과 동일한 피카츄 포즈 40종 — 스폰마다 랜덤으로 등장
+  const CARDS = [
+    'c01','c04','c08','c09','c10','c12','c13','c15','c19','c23','c24','c26','c33','c35','c38','c39',
+    'd04','d05','d07','d08','d09','d10','d13','d18','d19','d21','d22','d27','d31','d32',
+    'd33','d34','d37','d38','d39','d40','d41','d42','d43','d44'
+  ];
+  const randCard = () => `url("../assets/cards/${CARDS[Math.floor(Math.random() * CARDS.length)]}.png")`;
 
   function comboMult(){ return 1 + Math.min(Math.max(combo - 1, 0), 15) * 0.1; }
   function updateScore(){ scoreEl.textContent = score.toLocaleString(); }
@@ -373,7 +382,9 @@
     const free = holes.filter(h => !h.classList.contains('up'));
     if (!free.length) return;
     const h = free[Math.floor(Math.random() * free.length)];
-    h._hit = false; h.classList.add('up');
+    h._hit = false;
+    h.querySelector('.mole').style.backgroundImage = randCard();   // 매번 랜덤 캐릭터
+    h.classList.add('up');
     const prog = 1 - remaining / ROUND;
     const dur = DIFFS[selectedDiff].show * (1 - prog * 0.45);
     h._hideT = setTimeout(() => {
