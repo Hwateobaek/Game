@@ -77,6 +77,10 @@
   }
   .hole.up .mole { bottom: 4%; }
   .hole.bonk .mole { transform: scale(0.82) rotate(-6deg); filter: brightness(1.2) drop-shadow(0 0 8px var(--accent-glow)); }
+  .hole.isbomb { box-shadow: inset 0 6px 12px rgba(120,85,10,0.35), 0 0 14px rgba(232,69,43,0.35); }
+  .hole.boom { animation: boomFlash 0.26s ease; }
+  .hole.boom .mole { transform: scale(1.15); filter: brightness(1.4) drop-shadow(0 0 12px var(--red)); }
+  @keyframes boomFlash { 0%,100% { background: radial-gradient(ellipse at 50% 78%, #d9b25e 0%, #c99f45 55%, #b98f38 100%); } 45% { background: radial-gradient(circle, #ff8a3d 0%, #e8452b 70%); } }
 
   .size-toggle { display: flex; background: var(--panel); border-radius: 10px; overflow: hidden; border: 1px solid rgba(214,170,60,0.28); }
   .size-toggle button { background: transparent; box-shadow: none; padding: 11px 15px; border-radius: 0; font-weight: 500; color: var(--muted); }
@@ -161,6 +165,7 @@
       <ul class="intro-rules">
         <li>🔨 <b>탭!</b> — 올라온 피카츄를 눌러 점수 획득</li>
         <li>🔥 <b>콤보</b> — 연속으로 잡으면 점수 배율 ↑</li>
+        <li>💣 <b>폭탄 주의!</b> — 보통 난이도부터 폭탄 등장, 누르면 −300점·콤보 끊김 (그냥 두면 안전)</li>
         <li>⏱️ <b>한 판 20초</b> — 시간이 지날수록 점점 빨라져요</li>
         <li>🏆 <b>랭킹</b> — 최고 기록이 저장돼 순위에 올라요</li>
       </ul>
@@ -332,10 +337,10 @@
   const comboEl = $('combo'), diffToggle = $('diffToggle');   // scoreEl은 상단 공통 참조 사용
   const ROUND = 20000;
   const DIFFS = {
-    easy:   { spawn: 1250, show: 1550, label: '느긋' },     // 기존 느긋보다 더 느리게
-    normal: { spawn: 950,  show: 1150, label: '보통' },     // 기존 느긋 속도
-    hard:   { spawn: 720,  show: 880,  label: '빠름' },     // 기존 보통 속도
-    ultra:  { spawn: 540,  show: 680,  label: '초스피드' }  // 기존 빠름 속도
+    easy:   { spawn: 1250, show: 1550, label: '느긋',   bomb: 0 },     // 폭탄 없음
+    normal: { spawn: 950,  show: 1150, label: '보통',   bomb: 0.18 },  // 보통부터 폭탄 등장
+    hard:   { spawn: 720,  show: 880,  label: '빠름',   bomb: 0.25 },
+    ultra:  { spawn: 540,  show: 680,  label: '초스피드', bomb: 0.32 }
   };
   let selectedDiff = 'normal';
   let holes = [], score = 0, combo = 0, maxCombo = 0;
@@ -348,6 +353,8 @@
     'd33','d34','d37','d38','d39','d40','d41','d42','d43','d44'
   ];
   const randCard = () => `url("../assets/cards/${CARDS[Math.floor(Math.random() * CARDS.length)]}.png")`;
+  const BOMB_IMG = 'url("../assets/bomb.png")';
+  const BOMB_PENALTY = 300;
 
   function comboMult(){ return 1 + Math.min(Math.max(combo - 1, 0), 15) * 0.1; }
   function updateScore(){ scoreEl.textContent = score.toLocaleString(); }
@@ -362,17 +369,26 @@
       gameEl.appendChild(h); holes.push(h);
     }
   }
-  function clearMoles(){ holes.forEach(h => { clearTimeout(h._hideT); h.classList.remove('up','bonk'); h._hit = false; }); }
+  function clearMoles(){ holes.forEach(h => { clearTimeout(h._hideT); h.classList.remove('up','bonk','boom','isbomb'); h._hit = false; h._bomb = false; }); }
 
   function onHoleTap(h){
     if (!playing || paused) return;
     if (h.classList.contains('up') && !h._hit){
       h._hit = true; clearTimeout(h._hideT);
-      combo++; if (combo > maxCombo) maxCombo = combo;
-      score += Math.round(100 * comboMult());
-      updateScore(); updateCombo(); sfxHit();
-      h.classList.add('bonk');
-      setTimeout(() => { h.classList.remove('up','bonk'); h._hit = false; }, 150);
+      if (h._bomb){
+        // 💥 폭탄 — 감점 + 콤보 리셋
+        combo = 0; score = Math.max(0, score - BOMB_PENALTY);
+        updateScore(); updateCombo(); sfxMiss();
+        flash(`<span class="bad">💥 −${BOMB_PENALTY} · 폭탄!</span>`);
+        h.classList.add('boom');
+        setTimeout(() => { h.classList.remove('up','boom','isbomb'); h._hit = false; }, 260);
+      } else {
+        combo++; if (combo > maxCombo) maxCombo = combo;
+        score += Math.round(100 * comboMult());
+        updateScore(); updateCombo(); sfxHit();
+        h.classList.add('bonk');
+        setTimeout(() => { h.classList.remove('up','bonk'); h._hit = false; }, 150);
+      }
     } else if (!h.classList.contains('up')){
       combo = 0; updateCombo(); sfxMiss();   // 헛방
     }
@@ -383,12 +399,17 @@
     if (!free.length) return;
     const h = free[Math.floor(Math.random() * free.length)];
     h._hit = false;
-    h.querySelector('.mole').style.backgroundImage = randCard();   // 매번 랜덤 캐릭터
+    h._bomb = Math.random() < (DIFFS[selectedDiff].bomb || 0);
+    h.classList.toggle('isbomb', h._bomb);
+    h.querySelector('.mole').style.backgroundImage = h._bomb ? BOMB_IMG : randCard();
     h.classList.add('up');
     const prog = 1 - remaining / ROUND;
     const dur = DIFFS[selectedDiff].show * (1 - prog * 0.45);
     h._hideT = setTimeout(() => {
-      if (h.classList.contains('up') && !h._hit){ h.classList.remove('up'); combo = 0; updateCombo(); }  // 놓침
+      if (h.classList.contains('up') && !h._hit){
+        h.classList.remove('up');
+        if (!h._bomb){ combo = 0; updateCombo(); }   // 피카츄 놓침만 콤보 리셋(폭탄 회피는 OK)
+      }
     }, Math.max(450, dur));
   }
   function scheduleSpawn(){
