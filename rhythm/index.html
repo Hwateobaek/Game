@@ -87,6 +87,22 @@
     font-weight: 800; font-size: 1.3rem; font-style: italic; z-index: 4; pointer-events: none;
     opacity: 0; transition: opacity 0.25s; text-shadow: 0 1px 3px rgba(0,0,0,0.15);
   }
+  .note.long {
+    background: linear-gradient(180deg, #ffe27a 0%, var(--accent) 100%);
+    border-radius: 13px; box-shadow: 0 0 10px rgba(245,168,0,0.55), inset 0 0 6px rgba(255,255,255,0.45);
+  }
+  /* 콤보 팝업 (트랙 오른쪽 위, 반사신경 규칙) */
+  #comboPop {
+    position: absolute; top: 8px; right: 10px; z-index: 5; pointer-events: none;
+    display: flex; flex-direction: column; align-items: flex-end; line-height: 1;
+    font-weight: 900; font-style: italic; opacity: 0; transition: opacity 0.18s; transform-origin: right top;
+  }
+  #comboPop.show { opacity: 0.97; }
+  #comboPopNum { font-size: clamp(1.8rem, 8vw, 2.8rem); color: #ff5a2a; -webkit-text-stroke: 2px #fff; paint-order: stroke fill; }
+  #comboPop .cw { font-size: clamp(0.7rem, 3.2vw, 1.1rem); color: #ffcf33; -webkit-text-stroke: 1px #a35200; paint-order: stroke fill; letter-spacing: 1px; }
+  @keyframes rcPunch { 0% { transform: scale(1.5) rotate(-3deg); } 55% { transform: scale(0.92); } 100% { transform: scale(1); } }
+  #comboPop.punch { animation: rcPunch 0.24s ease; }
+  .song-select { background: var(--panel); color: var(--text); border: 1px solid rgba(214,170,60,0.4); border-radius: 10px; padding: 10px 12px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
 
   #message { min-height: 26px; color: var(--muted); font-size: 0.95rem; text-align: center; }
   #message .hit { color: var(--good); font-weight: 600; }
@@ -165,7 +181,8 @@
       <h2>리듬 탭</h2>
       <p class="intro-lead">내려오는 노트가 라인에 닿는 순간 탭하세요!</p>
       <ul class="intro-rules">
-        <li>🎵 <b>타이밍</b> — 노트가 아래 라인에 맞을 때 해당 칸을 탭</li>
+        <li>🎼 <b>곡 선택</b> — 유명 클래식(캐논·엘리제·환희의 송가 등)에 맞춰 노트 등장</li>
+        <li>🎵 <b>타이밍</b> — 노트가 아래 라인에 맞을 때 해당 칸을 탭 (긴 노트도 등장!)</li>
         <li>✨ <b>판정</b> — 정확할수록 PERFECT! 연속 성공 시 콤보 ↑</li>
         <li>🎚️ <b>난이도</b> — 쉬움(4키) / 보통(6키) / 어려움(6키·빠름)</li>
         <li>⌨️ <b>PC</b> — 아래 표시된 키(D F J K …)로도 플레이 가능</li>
@@ -189,6 +206,13 @@
     <button id="startBtn">시작</button>
     <button id="pauseBtn" class="ghost-btn" disabled>⏸ 멈춤</button>
     <button id="quitBtn" class="ghost-btn quit-btn" disabled>⏹ 종료</button>
+    <select id="songSelect" class="song-select" title="곡 선택">
+      <option value="twinkle">🎵 반짝반짝 작은별</option>
+      <option value="joy">🎵 환희의 송가</option>
+      <option value="canon">🎵 캐논 (파헬벨)</option>
+      <option value="elise">🎵 엘리제를 위하여</option>
+      <option value="turkey">🎵 터키 행진곡</option>
+    </select>
     <div class="size-toggle" id="diffToggle">
       <button data-diff="easy" class="active">쉬움</button>
       <button data-diff="normal">보통</button>
@@ -334,26 +358,86 @@
   // 온라인 공유 랭킹: 신기록 시 promptOnlineRegister(score, metaText) 호출 → 닉네임 입력 → 등록
   // 입력은 pointerdown 사용, playing && !paused 일 때만 처리.
   // =========================================================
-  // ----- 리듬 탭 (4레인 노트 낙하) -----
-  const comboEl = $('combo');   // scoreEl은 상단 공통 참조 사용
-  const ROUND = 30000, GOOD = 170, PERFECT = 75;
+  // ----- 리듬 탭 (곡 기반 · 롱노트 · 콤보 팝업) -----
+  const comboEl = $('combo'), songSelect = $('songSelect');   // scoreEl은 상단 공통 참조
+  const GOOD = 170, PERFECT = 75;
   const DIFFS = {
-    easy:   { keys: ['D','F','J','K'],          travel: 1500, spawn: 470, label: '쉬움' },
-    normal: { keys: ['S','D','F','J','K','L'],  travel: 1500, spawn: 470, label: '보통' },   // 6키
-    hard:   { keys: ['S','D','F','J','K','L'],  travel: 1080, spawn: 360, label: '어려움' }  // 6키 + 빠름
+    easy:   { keys: ['D','F','J','K'],          travel: 1500, label: '쉬움' },
+    normal: { keys: ['S','D','F','J','K','L'],  travel: 1500, label: '보통' },   // 6키
+    hard:   { keys: ['S','D','F','J','K','L'],  travel: 1050, label: '어려움' }  // 6키 + 빠름
+  };
+  // 저작권 프리 클래식 멜로디 — [음이름 또는 0(쉼표), 박자]. 1.6박 이상은 롱노트.
+  const SONGS = {
+    twinkle: { name: '반짝반짝 작은별', bpm: 108, melody: [
+      ['C4',1],['C4',1],['G4',1],['G4',1],['A4',1],['A4',1],['G4',2],
+      ['F4',1],['F4',1],['E4',1],['E4',1],['D4',1],['D4',1],['C4',2],
+      ['G4',1],['G4',1],['F4',1],['F4',1],['E4',1],['E4',1],['D4',2],
+      ['G4',1],['G4',1],['F4',1],['F4',1],['E4',1],['E4',1],['D4',2] ] },
+    joy: { name: '환희의 송가', bpm: 114, melody: [
+      ['E4',1],['E4',1],['F4',1],['G4',1],['G4',1],['F4',1],['E4',1],['D4',1],
+      ['C4',1],['C4',1],['D4',1],['E4',1],['E4',1.5],['D4',0.5],['D4',2],
+      ['E4',1],['E4',1],['F4',1],['G4',1],['G4',1],['F4',1],['E4',1],['D4',1],
+      ['C4',1],['C4',1],['D4',1],['E4',1],['D4',1.5],['C4',0.5],['C4',2] ] },
+    canon: { name: '캐논 (파헬벨)', bpm: 66, melody: [
+      ['F#5',2],['E5',2],['D5',2],['C#5',2],['B4',2],['A4',2],['B4',2],['C#5',2],
+      ['D5',1],['C#5',1],['B4',1],['A4',1],['G4',1],['F#4',1],['G4',1],['E4',1] ] },
+    elise: { name: '엘리제를 위하여', bpm: 116, melody: [
+      ['E5',0.5],['D#5',0.5],['E5',0.5],['D#5',0.5],['E5',0.5],['B4',0.5],['D5',0.5],['C5',0.5],['A4',1.5],
+      ['C4',0.5],['E4',0.5],['A4',0.5],['B4',1.5],
+      ['E4',0.5],['G#4',0.5],['B4',0.5],['C5',1.5],
+      ['E4',0.5],['E5',0.5],['D#5',0.5],['E5',0.5],['D#5',0.5],['E5',0.5],['B4',0.5],['D5',0.5],['C5',0.5],['A4',1.5] ] },
+    turkey: { name: '터키 행진곡', bpm: 120, melody: [
+      ['B4',0.5],['A4',0.5],['G#4',0.5],['A4',0.5],['C5',1],
+      ['D5',0.5],['C5',0.5],['B4',0.5],['C5',0.5],['E5',1],
+      ['F5',0.5],['E5',0.5],['D#5',0.5],['E5',0.5],['B5',0.5],['A5',0.5],['G#5',0.5],['A5',0.5],['B5',0.5],['A5',0.5],['G#5',0.5],['A5',0.5],
+      ['C6',2] ] }
   };
   const diffToggle = document.getElementById('diffToggle');
-  let selectedDiff = 'easy';
-  let KEYS = DIFFS.easy.keys, TRAVEL = DIFFS.easy.travel, SPAWN = DIFFS.easy.spawn;
-  function applyDiff(){ const d = DIFFS[selectedDiff]; KEYS = d.keys; TRAVEL = d.travel; SPAWN = d.spawn; }
-  let lanes = [], notes = [], judgeEl = null;
+  let selectedDiff = 'easy', selectedSong = 'twinkle';
+  let KEYS = DIFFS.easy.keys, TRAVEL = DIFFS.easy.travel, LEAD = DIFFS.easy.travel;
+  function applyDiff(){ const d = DIFFS[selectedDiff]; KEYS = d.keys; TRAVEL = d.travel; LEAD = d.travel; }
+
+  let lanes = [], notes = [], judgeEl = null, comboPop = null, comboNum = null;
   let score = 0, combo = 0, maxCombo = 0;
-  let remaining = ROUND, endAt = 0, spawnAt = 0, rafId = null, pauseStart = 0;
+  let chart = [], chartIdx = 0, totalMs = 0;
+  let t0perf = 0, t0audio = 0, rafId = null, pauseStart = 0, songOscs = [];
+
+  const SEMI = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
+  function midiOf(n){ const m = /^([A-G])(#?)(\d)$/.exec(n); return SEMI[m[1]] + (m[2] ? 1 : 0) + (+m[3] + 1) * 12; }
+  function freqOf(mi){ return 440 * Math.pow(2, (mi - 69) / 12); }
+  function buildChart(song, laneCount){
+    const spb = 60 / song.bpm;
+    const oneLen = song.melody.reduce((s, m) => s + m[1], 0) * spb;
+    const reps = Math.max(1, Math.round(42 / oneLen));
+    let full = [];
+    for (let r = 0; r < reps; r++) full = full.concat(song.melody);
+    const ps = full.filter(m => m[0] !== 0).map(m => midiOf(m[0]));
+    const lo = Math.min(...ps), hi = Math.max(...ps);
+    let t = 0; const out = [];
+    full.forEach(([nm, beats]) => {
+      if (nm !== 0){
+        const mi = midiOf(nm);
+        const lane = hi > lo ? Math.round((mi - lo) / (hi - lo) * (laneCount - 1)) : 0;
+        out.push({ time: t, lane, freq: freqOf(mi), durMs: beats * spb * 1000, long: beats >= 1.6 });
+      }
+      t += beats * spb;
+    });
+    return { chart: out, duration: t };
+  }
 
   function updateScore(){ scoreEl.textContent = score.toLocaleString(); }
   function updateCombo(){ comboEl.textContent = combo > 1 ? combo + '×' : '—'; comboEl.style.color = combo >= 5 ? 'var(--gold)' : ''; }
   function comboMult(){ return 1 + Math.min(Math.max(combo - 1, 0), 15) * 0.1; }
-  function hitY(lane){ return lane.clientHeight - 90; }   // 노트가 라인에 닿는 y (lane-key 위치)
+  function hitY(lane){ return lane.clientHeight - 90; }
+
+  // 콤보 팝업 (반사신경 규칙: 10부터, 10단위마다 연빨강→진빨강)
+  function comboRGB(c){ const lv = Math.floor(c / 10), tt = Math.min((lv - 1) / 5, 1);
+    return { r: Math.round(255 + (150 - 255) * tt), g: Math.round(120 + (0 - 120) * tt), b: Math.round(110 + (0 - 110) * tt) }; }
+  function showComboPop(c){ if (!comboPop) return; const { r, g, b } = comboRGB(c);
+    comboNum.textContent = c; comboNum.style.color = `rgb(${r},${g},${b})`;
+    comboNum.style.textShadow = `0 3px 0 rgba(110,0,0,0.4), 0 0 14px rgba(${r},${g},${b},0.75)`;
+    comboPop.classList.add('show'); comboPop.classList.remove('punch'); void comboPop.offsetWidth; comboPop.classList.add('punch'); }
+  function hideComboPop(){ if (comboPop) comboPop.classList.remove('show', 'punch'); }
 
   function buildTrack(){
     gameEl.innerHTML = ''; lanes = [];
@@ -366,15 +450,34 @@
     }
     const hit = document.createElement('div'); hit.className = 'hitline'; gameEl.appendChild(hit);
     judgeEl = document.createElement('div'); judgeEl.className = 'judge'; gameEl.appendChild(judgeEl);
+    comboPop = document.createElement('div'); comboPop.id = 'comboPop';
+    comboPop.innerHTML = '<span id="comboPopNum">0</span><span class="cw">COMBO</span>';
+    gameEl.appendChild(comboPop); comboNum = comboPop.querySelector('#comboPopNum');
   }
   function clearNotes(){ notes.forEach(n => n.el.remove()); notes = []; }
-  function showJudge(text, color){ judgeEl.textContent = text; judgeEl.style.color = color; judgeEl.style.opacity = '1'; clearTimeout(judgeEl._t); judgeEl._t = setTimeout(() => { judgeEl.style.opacity = '0'; }, 380); }
-  function spawnNote(){
-    const li = Math.floor(Math.random() * lanes.length);
-    const el = document.createElement('div'); el.className = 'note'; el.style.top = '-30px';
-    lanes[li].appendChild(el);
-    const now = performance.now();
-    notes.push({ lane: li, el, spawn: now, reach: now + TRAVEL, hit: false });
+  function showJudge(t, c){ judgeEl.textContent = t; judgeEl.style.color = c; judgeEl.style.opacity = '1'; clearTimeout(judgeEl._t); judgeEl._t = setTimeout(() => { judgeEl.style.opacity = '0'; }, 380); }
+
+  function stopSongAudio(){ songOscs.forEach(o => { try { o.stop(); } catch (e) {} }); songOscs = []; }
+  function songTone(freq, at, durSec){
+    if (!audioCtx) return;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(freq, at);
+    const hold = Math.max(0.05, Math.min(durSec * 0.8, durSec - 0.03));
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(0.5, at + 0.02);
+    g.gain.setValueAtTime(0.45, at + hold);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + durSec + 0.04);
+    o.connect(g); g.connect(masterGain);
+    o.start(at); o.stop(at + durSec + 0.1); songOscs.push(o);
+  }
+
+  function spawnChartNote(n){
+    const el = document.createElement('div'); el.className = 'note' + (n.long ? ' long' : '');
+    const hy = hitY(lanes[n.lane]);
+    const barH = n.long ? Math.min(hy * 0.7, (n.durMs / TRAVEL) * (hy + 40)) : 26;
+    if (n.long) el.style.height = barH + 'px';
+    lanes[n.lane].appendChild(el);
+    notes.push({ lane: n.lane, el, hitPerf: t0perf + LEAD + n.time * 1000, long: n.long, barH, hit: false });
   }
 
   function tapLane(i){
@@ -382,32 +485,37 @@
     lanes[i].classList.add('active'); setTimeout(() => lanes[i].classList.remove('active'), 90);
     const now = performance.now();
     let best = null, bestD = 1e9;
-    notes.forEach(n => { if (n.lane === i && !n.hit){ const d = Math.abs(n.reach - now); if (d < bestD){ bestD = d; best = n; } } });
+    notes.forEach(n => { if (n.lane === i && !n.hit){ const d = Math.abs(n.hitPerf - now); if (d < bestD){ bestD = d; best = n; } } });
     if (best && bestD <= GOOD){
       best.hit = true; best.el.remove();
       combo++; if (combo > maxCombo) maxCombo = combo;
       const perfect = bestD <= PERFECT;
-      score += Math.round((perfect ? 300 : 150) * comboMult());
+      score += Math.round((perfect ? 300 : 150) * comboMult() * (best.long ? 1.6 : 1));
       updateScore(); updateCombo(); sfxHit();
+      if (combo >= 10) showComboPop(combo);
       showJudge(perfect ? 'PERFECT' : 'GOOD', perfect ? 'var(--good)' : 'var(--accent)');
     } else {
-      combo = 0; updateCombo(); sfxMiss(); showJudge('MISS', 'var(--red)');
+      combo = 0; updateCombo(); hideComboPop(); sfxMiss(); showJudge('MISS', 'var(--red)');
     }
   }
 
   function loop(){
     const now = performance.now();
-    remaining = Math.max(0, endAt - now);
-    timeEl.textContent = (remaining / 1000).toFixed(1);
-    for (let k = notes.length - 1; k >= 0; k--){
-      const n = notes[k];
-      if (n.hit){ notes.splice(k, 1); continue; }
-      const hy = hitY(lanes[n.lane]);
-      n.el.style.top = (-30 + ((now - n.spawn) / TRAVEL) * (hy + 30)) + 'px';
-      if (now > n.reach + 180){ n.el.remove(); notes.splice(k, 1); combo = 0; updateCombo(); showJudge('MISS', 'var(--red)'); }
+    while (chartIdx < chart.length){
+      const n = chart[chartIdx];
+      if (now >= (t0perf + LEAD + n.time * 1000) - TRAVEL){ spawnChartNote(n); chartIdx++; } else break;
     }
-    if (now >= spawnAt){ spawnNote(); spawnAt = now + SPAWN; }
-    if (remaining <= 0){ endGame(false); return; }
+    for (let k = notes.length - 1; k >= 0; k--){
+      const nt = notes[k];
+      if (nt.hit){ notes.splice(k, 1); continue; }
+      const hy = hitY(lanes[nt.lane]);
+      const headY = hy - ((nt.hitPerf - now) / TRAVEL) * (hy + 40);
+      nt.el.style.top = (headY - nt.barH) + 'px';
+      if (now > nt.hitPerf + 180){ nt.el.remove(); notes.splice(k, 1); combo = 0; updateCombo(); hideComboPop(); showJudge('MISS', 'var(--red)'); }
+    }
+    const remain = Math.max(0, totalMs - (now - t0perf));
+    timeEl.textContent = (remain / 1000).toFixed(1);
+    if (remain <= 0){ endGame(false); return; }
     rafId = requestAnimationFrame(loop);
   }
 
@@ -417,26 +525,38 @@
     if (idx >= 0){ e.preventDefault(); tapLane(idx); }
   });
 
+  function setChooserEnabled(on){ diffToggle.querySelectorAll('button').forEach(b => b.disabled = !on); songSelect.disabled = !on; }
   diffToggle.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || playing) return;
     selectedDiff = b.dataset.diff; applyDiff();
     diffToggle.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
-    buildTrack();   // 대기 화면에 레인 수 반영
+    buildTrack();
   });
+  songSelect.addEventListener('change', () => { if (playing){ songSelect.value = selectedSong; return; } selectedSong = songSelect.value; });
 
   function onStart(){
-    applyDiff();
-    diffToggle.querySelectorAll('button').forEach(b => b.disabled = true);
-    score = 0; combo = 0; maxCombo = 0; updateScore(); updateCombo();
+    applyDiff(); setChooserEnabled(false);
+    score = 0; combo = 0; maxCombo = 0; updateScore(); updateCombo(); hideComboPop();
     buildTrack(); clearNotes();
-    remaining = ROUND; endAt = performance.now() + ROUND; spawnAt = performance.now() + 500;
-    loop();
-    flash('노트를 맞춰요! 🎵');
+    const built = buildChart(SONGS[selectedSong], KEYS.length);
+    chart = built.chart; chartIdx = 0;
+    totalMs = LEAD + built.duration * 1000 + 900;
+    if (musicTimer){ clearInterval(musicTimer); musicTimer = null; }   // 제네릭 배경 루프 끄기
+    stopSongAudio();
+    t0perf = performance.now() + 200;
+    if (audioCtx){
+      t0audio = audioCtx.currentTime + 0.2;
+      const leadS = LEAD / 1000;
+      chart.forEach(n => songTone(n.freq, t0audio + leadS + n.time, n.durMs / 1000));
+    }
+    rafId = requestAnimationFrame(loop);
+    flash(`♪ ${SONGS[selectedSong].name}`);
   }
   function onEnd(quit){
-    cancelAnimationFrame(rafId); clearNotes(); timeEl.textContent = '0.0';
-    diffToggle.querySelectorAll('button').forEach(b => b.disabled = false);
-    const meta = `최고 ${maxCombo}콤보`;
+    cancelAnimationFrame(rafId); stopSongAudio(); clearNotes(); hideComboPop(); timeEl.textContent = '0.0';
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    setChooserEnabled(true);
+    const meta = `${SONGS[selectedSong].name} · ${DIFFS[selectedDiff].label} · 최고 ${maxCombo}콤보`;
     let result = `${quit ? '중단!' : '끝!'} <span class="hit">${score.toLocaleString()}점</span> · 최고 ${maxCombo}콤보`;
     const rank = saveRank(score, meta);
     let newRecord = false;
@@ -447,12 +567,12 @@
     playEndJingle(newRecord);
     if (newRecord && score > 0) promptOnlineRegister(score, meta);
   }
-  function onPause(){ cancelAnimationFrame(rafId); pauseStart = performance.now(); }
+  function onPause(){ cancelAnimationFrame(rafId); if (audioCtx) audioCtx.suspend(); pauseStart = performance.now(); }
   function onResume(){
-    const dt = performance.now() - pauseStart;   // 정지 시간만큼 모든 타이밍 이동
-    notes.forEach(n => { n.spawn += dt; n.reach += dt; });
-    endAt += dt; spawnAt += dt;
-    loop();
+    if (musicTimer){ clearInterval(musicTimer); musicTimer = null; }
+    if (audioCtx) audioCtx.resume();
+    t0perf += performance.now() - pauseStart;   // 정지 시간만큼 이동(오디오도 suspend로 함께 지연됨)
+    rafId = requestAnimationFrame(loop);
   }
 
   buildTrack();   // 로드 시 트랙 표시
