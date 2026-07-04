@@ -77,6 +77,10 @@
     z-index: 3; transition: background 0.08s, color 0.08s;
   }
   .lane.active .lane-key { background: var(--accent); color: #fff; transform: scale(0.96); }
+
+  .size-toggle { display: flex; background: var(--panel); border-radius: 10px; overflow: hidden; border: 1px solid rgba(214,170,60,0.28); }
+  .size-toggle button { background: transparent; box-shadow: none; padding: 11px 15px; border-radius: 0; font-weight: 500; color: var(--muted); }
+  .size-toggle button.active { background: var(--cell-hover); color: var(--text); }
   .hitline { position: absolute; left: 0; right: 0; bottom: 72px; height: 3px; background: var(--accent); opacity: 0.55; z-index: 2; pointer-events: none; }
   .judge {
     position: absolute; left: 0; right: 0; bottom: 130px; text-align: center;
@@ -163,7 +167,8 @@
       <ul class="intro-rules">
         <li>🎵 <b>타이밍</b> — 노트가 아래 라인에 맞을 때 해당 칸을 탭</li>
         <li>✨ <b>판정</b> — 정확할수록 PERFECT! 연속 성공 시 콤보 ↑</li>
-        <li>⌨️ <b>PC</b> — D · F · J · K 키로도 플레이 가능</li>
+        <li>🎚️ <b>난이도</b> — 쉬움(4키) / 보통(6키) / 어려움(6키·빠름)</li>
+        <li>⌨️ <b>PC</b> — 아래 표시된 키(D F J K …)로도 플레이 가능</li>
         <li>🏆 <b>랭킹</b> — 최고 기록이 저장돼 순위에 올라요</li>
       </ul>
       <button id="introBtn">게임 시작하기 →</button>
@@ -171,7 +176,7 @@
   </div>
 
   <h1>리듬 탭 <img src="../assets/pikachu.png" class="pika-icon" alt="피카츄"></h1>
-  <div class="subtitle">노트가 라인에 닿을 때 탭! · D F J K 키 지원</div>
+  <div class="subtitle">노트가 라인에 닿을 때 탭! · 난이도별 키(D F J K …) 지원</div>
 
   <div class="stats">
     <div class="stat"><div class="label">남은 시간</div><div class="value" id="time">30.0</div></div>
@@ -184,6 +189,11 @@
     <button id="startBtn">시작</button>
     <button id="pauseBtn" class="ghost-btn" disabled>⏸ 멈춤</button>
     <button id="quitBtn" class="ghost-btn quit-btn" disabled>⏹ 종료</button>
+    <div class="size-toggle" id="diffToggle">
+      <button data-diff="easy" class="active">쉬움</button>
+      <button data-diff="normal">보통</button>
+      <button data-diff="hard">어려움</button>
+    </div>
     <button id="muteBtn" class="icon-btn" title="음소거 / 켜기" aria-label="음소거">🔊</button>
   </div>
 
@@ -326,8 +336,16 @@
   // =========================================================
   // ----- 리듬 탭 (4레인 노트 낙하) -----
   const comboEl = $('combo');   // scoreEl은 상단 공통 참조 사용
-  const KEYS = ['D','F','J','K'];
-  const ROUND = 30000, TRAVEL = 1500, SPAWN = 470, GOOD = 170, PERFECT = 75;
+  const ROUND = 30000, GOOD = 170, PERFECT = 75;
+  const DIFFS = {
+    easy:   { keys: ['D','F','J','K'],          travel: 1500, spawn: 470, label: '쉬움' },
+    normal: { keys: ['S','D','F','J','K','L'],  travel: 1500, spawn: 470, label: '보통' },   // 6키
+    hard:   { keys: ['S','D','F','J','K','L'],  travel: 1080, spawn: 360, label: '어려움' }  // 6키 + 빠름
+  };
+  const diffToggle = document.getElementById('diffToggle');
+  let selectedDiff = 'easy';
+  let KEYS = DIFFS.easy.keys, TRAVEL = DIFFS.easy.travel, SPAWN = DIFFS.easy.spawn;
+  function applyDiff(){ const d = DIFFS[selectedDiff]; KEYS = d.keys; TRAVEL = d.travel; SPAWN = d.spawn; }
   let lanes = [], notes = [], judgeEl = null;
   let score = 0, combo = 0, maxCombo = 0;
   let remaining = ROUND, endAt = 0, spawnAt = 0, rafId = null, pauseStart = 0;
@@ -339,7 +357,8 @@
 
   function buildTrack(){
     gameEl.innerHTML = ''; lanes = [];
-    for (let i = 0; i < 4; i++){
+    gameEl.style.gridTemplateColumns = `repeat(${KEYS.length}, 1fr)`;
+    for (let i = 0; i < KEYS.length; i++){
       const lane = document.createElement('div'); lane.className = 'lane'; lane.dataset.lane = i;
       lane.innerHTML = `<div class="lane-key">${KEYS[i]}</div>`;
       lane.addEventListener('pointerdown', () => tapLane(i));
@@ -351,7 +370,7 @@
   function clearNotes(){ notes.forEach(n => n.el.remove()); notes = []; }
   function showJudge(text, color){ judgeEl.textContent = text; judgeEl.style.color = color; judgeEl.style.opacity = '1'; clearTimeout(judgeEl._t); judgeEl._t = setTimeout(() => { judgeEl.style.opacity = '0'; }, 380); }
   function spawnNote(){
-    const li = Math.floor(Math.random() * 4);
+    const li = Math.floor(Math.random() * lanes.length);
     const el = document.createElement('div'); el.className = 'note'; el.style.top = '-30px';
     lanes[li].appendChild(el);
     const now = performance.now();
@@ -398,15 +417,25 @@
     if (idx >= 0){ e.preventDefault(); tapLane(idx); }
   });
 
+  diffToggle.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || playing) return;
+    selectedDiff = b.dataset.diff; applyDiff();
+    diffToggle.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+    buildTrack();   // 대기 화면에 레인 수 반영
+  });
+
   function onStart(){
+    applyDiff();
+    diffToggle.querySelectorAll('button').forEach(b => b.disabled = true);
     score = 0; combo = 0; maxCombo = 0; updateScore(); updateCombo();
-    clearNotes();
+    buildTrack(); clearNotes();
     remaining = ROUND; endAt = performance.now() + ROUND; spawnAt = performance.now() + 500;
     loop();
     flash('노트를 맞춰요! 🎵');
   }
   function onEnd(quit){
     cancelAnimationFrame(rafId); clearNotes(); timeEl.textContent = '0.0';
+    diffToggle.querySelectorAll('button').forEach(b => b.disabled = false);
     const meta = `최고 ${maxCombo}콤보`;
     let result = `${quit ? '중단!' : '끝!'} <span class="hit">${score.toLocaleString()}점</span> · 최고 ${maxCombo}콤보`;
     const rank = saveRank(score, meta);
