@@ -91,6 +91,10 @@
     background: linear-gradient(180deg, #ffe27a 0%, var(--accent) 100%);
     border-radius: 13px; box-shadow: 0 0 10px rgba(245,168,0,0.55), inset 0 0 6px rgba(255,255,255,0.45);
   }
+  .note.long.holding {
+    background: linear-gradient(180deg, #b6f5cf 0%, var(--good) 100%);
+    box-shadow: 0 0 16px rgba(31,164,99,0.7), inset 0 0 8px rgba(255,255,255,0.5);
+  }
   /* 콤보 팝업 (트랙 오른쪽 위, 반사신경 규칙) */
   #comboPop {
     position: absolute; top: 8px; right: 10px; z-index: 5; pointer-events: none;
@@ -182,7 +186,8 @@
       <p class="intro-lead">내려오는 노트가 라인에 닿는 순간 탭하세요!</p>
       <ul class="intro-rules">
         <li>🎼 <b>곡 선택</b> — 유명 클래식(캐논·엘리제·환희의 송가 등)에 맞춰 노트 등장</li>
-        <li>🎵 <b>타이밍</b> — 노트가 아래 라인에 맞을 때 해당 칸을 탭 (긴 노트도 등장!)</li>
+        <li>🎵 <b>타이밍</b> — 노트가 아래 라인에 맞을 때 해당 칸을 탭</li>
+        <li>➰ <b>롱노트</b> — 긴 노트는 <b>끝까지 누르고 있어야</b> 완주! (일찍 떼면 놓침)</li>
         <li>✨ <b>판정</b> — 정확할수록 PERFECT! 연속 성공 시 콤보 ↑</li>
         <li>🎚️ <b>난이도</b> — 쉬움(4키) / 보통(6키) / 어려움(6키·빠름)</li>
         <li>⌨️ <b>PC</b> — 아래 표시된 키(D F J K …)로도 플레이 가능</li>
@@ -398,6 +403,7 @@
   function applyDiff(){ const d = DIFFS[selectedDiff]; KEYS = d.keys; TRAVEL = d.travel; LEAD = d.travel; }
 
   let lanes = [], notes = [], judgeEl = null, comboPop = null, comboNum = null;
+  let laneDown = [], pointerLane = new Map();   // 롱노트 홀드 추적
   let score = 0, combo = 0, maxCombo = 0;
   let chart = [], chartIdx = 0, totalMs = 0;
   let t0perf = 0, t0audio = 0, rafId = null, pauseStart = 0, songOscs = [];
@@ -445,7 +451,7 @@
     for (let i = 0; i < KEYS.length; i++){
       const lane = document.createElement('div'); lane.className = 'lane'; lane.dataset.lane = i;
       lane.innerHTML = `<div class="lane-key">${KEYS[i]}</div>`;
-      lane.addEventListener('pointerdown', () => tapLane(i));
+      lane.addEventListener('pointerdown', e => { pointerLane.set(e.pointerId, i); pressLane(i); });
       gameEl.appendChild(lane); lanes.push(lane);
     }
     const hit = document.createElement('div'); hit.className = 'hitline'; gameEl.appendChild(hit);
@@ -477,26 +483,52 @@
     const barH = n.long ? Math.min(hy * 0.7, (n.durMs / TRAVEL) * (hy + 40)) : 26;
     if (n.long) el.style.height = barH + 'px';
     lanes[n.lane].appendChild(el);
-    notes.push({ lane: n.lane, el, hitPerf: t0perf + LEAD + n.time * 1000, long: n.long, barH, hit: false });
+    const hp = t0perf + LEAD + n.time * 1000;
+    notes.push({ lane: n.lane, el, hitPerf: hp, tailPerf: hp + n.durMs, durMs: n.durMs, long: n.long, barH, hit: false, headHit: false, holding: false });
   }
 
-  function tapLane(i){
+  function comboUp(){ combo++; if (combo > maxCombo) maxCombo = combo; updateCombo(); if (combo >= 10) showComboPop(combo); }
+  function comboBreak(){ combo = 0; updateCombo(); hideComboPop(); }
+
+  function pressLane(i){
     if (!playing || paused) return;
-    lanes[i].classList.add('active'); setTimeout(() => lanes[i].classList.remove('active'), 90);
+    laneDown[i] = true;
+    lanes[i].classList.add('active');
+    if (notes.some(n => n.lane === i && n.holding)) return;   // 이미 홀드 중이면 추가 입력 무시
     const now = performance.now();
     let best = null, bestD = 1e9;
-    notes.forEach(n => { if (n.lane === i && !n.hit){ const d = Math.abs(n.hitPerf - now); if (d < bestD){ bestD = d; best = n; } } });
+    notes.forEach(n => { if (n.lane === i && !n.hit && !n.headHit){ const d = Math.abs(n.hitPerf - now); if (d < bestD){ bestD = d; best = n; } } });
     if (best && bestD <= GOOD){
-      best.hit = true; best.el.remove();
-      combo++; if (combo > maxCombo) maxCombo = combo;
       const perfect = bestD <= PERFECT;
-      score += Math.round((perfect ? 300 : 150) * comboMult() * (best.long ? 1.6 : 1));
-      updateScore(); updateCombo(); sfxHit();
-      if (combo >= 10) showComboPop(combo);
-      showJudge(perfect ? 'PERFECT' : 'GOOD', perfect ? 'var(--good)' : 'var(--accent)');
+      if (best.long){
+        best.headHit = true; best.holding = true; best.el.classList.add('holding');
+        comboUp(); sfxHit(); showJudge('HOLD', 'var(--gold)');   // 점수는 끝까지 눌러 완주해야 지급
+      } else {
+        best.hit = true; best.el.remove();
+        comboUp();
+        score += Math.round((perfect ? 300 : 150) * comboMult());
+        updateScore(); sfxHit();
+        showJudge(perfect ? 'PERFECT' : 'GOOD', perfect ? 'var(--good)' : 'var(--accent)');
+      }
     } else {
-      combo = 0; updateCombo(); hideComboPop(); sfxMiss(); showJudge('MISS', 'var(--red)');
+      comboBreak(); sfxMiss(); showJudge('MISS', 'var(--red)');
     }
+  }
+  function releaseLane(i){
+    laneDown[i] = false;
+    lanes[i].classList.remove('active');
+    const now = performance.now();
+    notes.forEach(n => {
+      if (n.lane === i && n.holding){
+        if (now >= n.tailPerf - GOOD){ completeLong(n); }     // 끝 근처에서 뗌 → 완주 인정
+        else { n.holding = false; n.hit = true; n.el.classList.remove('holding'); n.el.remove(); comboBreak(); sfxMiss(); showJudge('놓침!', 'var(--red)'); }
+      }
+    });
+  }
+  function completeLong(n){
+    n.holding = false; n.hit = true; n.el.remove();
+    score += Math.round(300 * comboMult() * 1.6);    // 롱노트 완주 보너스
+    updateScore(); sfxHit(); showJudge('PERFECT+', 'var(--good)');
   }
 
   function loop(){
@@ -509,9 +541,16 @@
       const nt = notes[k];
       if (nt.hit){ notes.splice(k, 1); continue; }
       const hy = hitY(lanes[nt.lane]);
-      const headY = hy - ((nt.hitPerf - now) / TRAVEL) * (hy + 40);
-      nt.el.style.top = (headY - nt.barH) + 'px';
-      if (now > nt.hitPerf + 180){ nt.el.remove(); notes.splice(k, 1); combo = 0; updateCombo(); hideComboPop(); showJudge('MISS', 'var(--red)'); }
+      if (nt.holding){
+        // 홀드 중: 헤드는 라인에 고정, 꼬리가 라인으로 내려오며 바가 줄어듦
+        const h = Math.max(0, nt.barH * (nt.tailPerf - now) / nt.durMs);
+        nt.el.style.height = h + 'px'; nt.el.style.top = (hy - h) + 'px';
+        if (now >= nt.tailPerf){ completeLong(nt); notes.splice(k, 1); }   // 끝까지 홀드 성공
+      } else {
+        const headY = hy - ((nt.hitPerf - now) / TRAVEL) * (hy + 40);
+        nt.el.style.top = (headY - nt.barH) + 'px';
+        if (!nt.headHit && now > nt.hitPerf + 180){ nt.el.remove(); notes.splice(k, 1); comboBreak(); showJudge('MISS', 'var(--red)'); }
+      }
     }
     const remain = Math.max(0, totalMs - (now - t0perf));
     timeEl.textContent = (remain / 1000).toFixed(1);
@@ -520,10 +559,16 @@
   }
 
   document.addEventListener('keydown', e => {
-    if (!playing || paused) return;
+    if (!playing || paused || e.repeat) return;
     const idx = KEYS.indexOf(e.key.toUpperCase());
-    if (idx >= 0){ e.preventDefault(); tapLane(idx); }
+    if (idx >= 0){ e.preventDefault(); pressLane(idx); }
   });
+  document.addEventListener('keyup', e => {
+    const idx = KEYS.indexOf(e.key.toUpperCase());
+    if (idx >= 0) releaseLane(idx);
+  });
+  window.addEventListener('pointerup', e => { if (pointerLane.has(e.pointerId)){ releaseLane(pointerLane.get(e.pointerId)); pointerLane.delete(e.pointerId); } });
+  window.addEventListener('pointercancel', e => { if (pointerLane.has(e.pointerId)){ releaseLane(pointerLane.get(e.pointerId)); pointerLane.delete(e.pointerId); } });
 
   function setChooserEnabled(on){ diffToggle.querySelectorAll('button').forEach(b => b.disabled = !on); songSelect.disabled = !on; }
   diffToggle.addEventListener('click', e => {
@@ -537,7 +582,7 @@
   function onStart(){
     applyDiff(); setChooserEnabled(false);
     score = 0; combo = 0; maxCombo = 0; updateScore(); updateCombo(); hideComboPop();
-    buildTrack(); clearNotes();
+    buildTrack(); clearNotes(); laneDown = []; pointerLane.clear();
     const built = buildChart(SONGS[selectedSong], KEYS.length);
     chart = built.chart; chartIdx = 0;
     totalMs = LEAD + built.duration * 1000 + 900;
