@@ -182,7 +182,7 @@
   <div class="stats">
     <div class="stat"><div class="label">시간</div><div class="value" id="time">0.0</div></div>
     <div class="stat"><div class="label">이동</div><div class="value accent" id="moves">0</div></div>
-    <div class="stat"><div class="label">완성 그림</div><div class="value"><img src="../assets/pika-square.png" class="preview-hint" alt="완성 그림"></div></div>
+    <div class="stat"><div class="label">완성 그림</div><div class="value"><img id="previewImg" src="../assets/pika-square.png" class="preview-hint" alt="완성 그림"></div></div>
     <div class="stat"><div class="label">최고점</div><div class="value good" id="best">—</div></div>
   </div>
 
@@ -335,9 +335,46 @@
   // 입력은 pointerdown 사용, playing && !paused 일 때만 처리.
   // =========================================================
   // ----- 슬라이딩 퍼즐 (피카츄 그림) -----
-  const movesEl = $('moves'), diffToggle = $('diffToggle');
+  const movesEl = $('moves'), diffToggle = $('diffToggle'), previewImg = $('previewImg');
   const BASE = { 3: 5000, 4: 12000 };
   let N = 3, board = [], blankVal = 8, moves = 0, solvedFlag = false;
+
+  // 완성 그림 — 매 게임 시작 시 기억력 카드에서 쓴 피카츄 캐릭터 중 하나로 바뀜.
+  // 카드 스프라이트는 투명·비정사각이라, 정사각 캔버스에 테마 배경을 깔고 가운데 정렬로 그려
+  // 왜곡 없는 퍼즐 그림(dataURL)을 만든다. 생성 결과는 캐시.
+  const CARD_POOL = [
+    'c01','c04','c08','c09','c10','c12','c13','c15','c19','c23','c24','c26','c33','c35','c38','c39',
+    'd04','d05','d07','d08','d09','d10','d13','d18','d19','d21','d22','d27','d31','d32',
+    'd33','d34','d37','d38','d39','d40','d41','d42','d43','d44'
+  ];
+  const DEFAULT_IMG = '../assets/pika-square.png';
+  const puzzleImgCache = {};
+  let currentImageURL = DEFAULT_IMG;
+
+  function makePuzzleImage(cardId, cb){
+    if (puzzleImgCache[cardId]) { cb(puzzleImgCache[cardId]); return; }
+    const img = new Image();
+    img.onload = () => {
+      const S = 480, cv = document.createElement('canvas'); cv.width = cv.height = S;
+      const g = cv.getContext('2d');
+      const grad = g.createRadialGradient(S/2, S*0.42, S*0.08, S/2, S/2, S*0.78);
+      grad.addColorStop(0, '#fffbe9'); grad.addColorStop(1, '#ffdb7d');
+      g.fillStyle = grad; g.fillRect(0, 0, S, S);
+      const pad = S * 0.09, maxW = S - 2*pad, maxH = S - 2*pad;
+      const r = Math.min(maxW / img.width, maxH / img.height);
+      const w = img.width * r, h = img.height * r;
+      g.drawImage(img, (S - w)/2, (S - h)/2, w, h);
+      let url; try { url = cv.toDataURL('image/png'); } catch(e){ url = null; }
+      if (url) puzzleImgCache[cardId] = url;
+      cb(url);
+    };
+    img.onerror = () => cb(null);
+    img.src = '../assets/cards/' + cardId + '.png';
+  }
+  function pickPuzzleImage(cb){
+    const cardId = CARD_POOL[Math.floor(Math.random() * CARD_POOL.length)];
+    makePuzzleImage(cardId, url => cb(url || DEFAULT_IMG));
+  }
 
   // 타이머(카운트업, 일시정지 보정)
   let elapsedBase = 0, segStart = 0, running = false, rafId = null;
@@ -359,6 +396,7 @@
       else {
         d.className = 'tile';
         const r = Math.floor(val / N), c = val % N;
+        d.style.backgroundImage = `url("${currentImageURL}")`;
         d.style.backgroundSize = `${N * 100}% ${N * 100}%`;
         d.style.backgroundPosition = `${(c / (N - 1)) * 100}% ${(r / (N - 1)) * 100}%`;
         d.innerHTML = `<span class="num">${val + 1}</span>`;
@@ -416,9 +454,15 @@
     moves = 0; solvedFlag = false; gameEl.classList.remove('won');
     updateMoves();
     diffToggle.querySelectorAll('button').forEach(b => b.disabled = true);
-    shuffleBoard(); render();
-    startTimer();
-    flash('조각을 밀어 그림을 완성하세요! 🧩');
+    flash('완성 그림 준비 중… 🖼️');
+    pickPuzzleImage(url => {
+      currentImageURL = url;
+      previewImg.src = url;
+      if (!playing) return;          // 준비 중 종료했으면 무시
+      shuffleBoard(); render();
+      startTimer();
+      flash('조각을 밀어 그림을 완성하세요! 🧩');
+    });
   }
   function onEnd(quit){
     pauseTimer();
