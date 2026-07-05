@@ -51,8 +51,7 @@
 
   /* ===== GAME AREA (게임판) — 게임별로 이 안을 구성 ===== */
   #game {
-    width: min(84vw, 360px);
-    aspect-ratio: 1 / 1;
+    width: min(88vw, 400px);
     margin: 0 auto 14px;
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -60,6 +59,7 @@
     touch-action: manipulation;
   }
   .pad {
+    aspect-ratio: 1 / 1;
     border-radius: 18px; cursor: pointer; opacity: 0.5;
     border: 3px solid rgba(0,0,0,0.08);
     transition: opacity 0.09s ease, transform 0.07s ease, box-shadow 0.09s ease;
@@ -69,7 +69,13 @@
   .pad.p1 { background: #f5a800; color: #f5a800; }
   .pad.p2 { background: #1fa463; color: #1fa463; }
   .pad.p3 { background: #3b82f6; color: #3b82f6; }
+  .pad.p4 { background: #8b5cf6; color: #8b5cf6; }
+  .pad.p5 { background: #ec4899; color: #ec4899; }
   #game.locked .pad { cursor: default; }
+
+  .size-toggle { display: flex; background: var(--panel); border-radius: 10px; overflow: hidden; border: 1px solid rgba(214,170,60,0.28); }
+  .size-toggle button { background: transparent; box-shadow: none; padding: 11px 16px; border-radius: 0; font-weight: 500; color: var(--muted); }
+  .size-toggle button.active { background: var(--cell-hover); color: var(--text); }
 
   #message { min-height: 26px; color: var(--muted); font-size: 0.95rem; text-align: center; }
   #message .hit { color: var(--good); font-weight: 600; }
@@ -151,6 +157,7 @@
         <li>👀 <b>잘 보기</b> — 패널이 순서대로 반짝여요 (소리도 함께)</li>
         <li>🎯 <b>따라 누르기</b> — 같은 순서로 탭하면 다음 단계로</li>
         <li>🔥 <b>점점 길어짐</b> — 단계가 오를수록 순서가 늘어나요</li>
+        <li>🎚️ <b>난이도</b> — 쉬움(4색) / 어려움(6색)</li>
         <li>🏆 <b>랭킹</b> — 최고 기록이 저장돼 순위에 올라요</li>
       </ul>
       <button id="introBtn">게임 시작하기 →</button>
@@ -170,6 +177,10 @@
     <button id="startBtn">시작</button>
     <button id="pauseBtn" class="ghost-btn" disabled>⏸ 멈춤</button>
     <button id="quitBtn" class="ghost-btn quit-btn" disabled>⏹ 종료</button>
+    <div class="size-toggle" id="diffToggle">
+      <button data-colors="4" class="active">쉬움</button>
+      <button data-colors="6">어려움</button>
+    </div>
     <button id="muteBtn" class="icon-btn" title="음소거 / 켜기" aria-label="음소거">🔊</button>
   </div>
 
@@ -311,8 +322,9 @@
   // 입력은 pointerdown 사용, playing && !paused 일 때만 처리.
   // =========================================================
   // ----- 색깔 순서 기억 (사이먼) -----
-  const levelEl = $('level');   // scoreEl은 상단 공통 참조 사용
-  const TONES = [329.63, 392.00, 261.63, 523.25];   // 패널별 음
+  const levelEl = $('level'), diffToggle = document.getElementById('diffToggle');   // scoreEl은 상단 공통 참조
+  const TONES = [329.63, 392.00, 261.63, 523.25, 440.00, 587.33];   // 패널별 음 (6색)
+  let padCount = 4;   // 쉬움 4색 / 어려움 6색
   let pads = [], sequence = [], playerIndex = 0, completedLevel = 0, score = 0;
   let accepting = false, phase = 'idle', playTimers = [];
 
@@ -324,7 +336,8 @@
 
   function buildPads(){
     gameEl.innerHTML = ''; pads = [];
-    for (let i = 0; i < 4; i++){
+    gameEl.style.gridTemplateColumns = `repeat(${padCount === 6 ? 3 : 2}, 1fr)`;   // 4색=2열, 6색=3열
+    for (let i = 0; i < padCount; i++){
       const p = document.createElement('div'); p.className = 'pad p' + i; p.dataset.i = i;
       p.addEventListener('pointerdown', () => onPadTap(i));
       gameEl.appendChild(p); pads.push(p);
@@ -351,7 +364,7 @@
   }
 
   function nextRound(){
-    sequence.push(Math.floor(Math.random() * 4));
+    sequence.push(Math.floor(Math.random() * padCount));
     updateLevel(sequence.length);
     playSequence();
   }
@@ -372,7 +385,15 @@
     }
   }
 
+  diffToggle.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || playing) return;
+    padCount = parseInt(b.dataset.colors, 10);
+    diffToggle.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+    buildPads();   // 대기 화면에 색 개수 반영
+  });
+
   function onStart(){
+    diffToggle.querySelectorAll('button').forEach(b => b.disabled = true);
     sequence = []; playerIndex = 0; completedLevel = 0; score = 0;
     updateScore(); updateLevel(0);
     buildPads();
@@ -380,7 +401,8 @@
   }
   function onEnd(quit){
     clearPlayTimers(); accepting = false; gameEl.classList.remove('locked');
-    const meta = `${completedLevel}단계`;
+    diffToggle.querySelectorAll('button').forEach(b => b.disabled = false);
+    const meta = `${padCount === 6 ? '어려움' : '쉬움'} · ${completedLevel}단계`;
     let result = `${quit ? '중단!' : '게임 오버!'} <span class="hit">${completedLevel}단계</span> · ${score.toLocaleString()}점`;
     const rank = saveRank(score, meta);
     let newRecord = false;
