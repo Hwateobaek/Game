@@ -63,21 +63,74 @@
     cursor: grab;
   }
   #player {
-    position: absolute; bottom: 6px; width: 56px; height: 64px;
+    position: absolute; bottom: 6px; width: 60px; height: 68px;
     object-fit: contain; object-position: bottom center;
     filter: drop-shadow(0 3px 4px rgba(120,80,0,0.3));
     pointer-events: none;
-    transition: none;
+    transform-origin: bottom center; will-change: transform;
   }
-  #player.hit { filter: brightness(1.6) drop-shadow(0 0 12px var(--red)); animation: hitFlash 0.4s; }
+  /* 대기: 숨쉬기 / 달리기: 실제 4프레임 달리기 그림을 순환 + 살짝 통통 튀는 hop.
+     원본은 오른쪽으로 달리는 그림 → 오른쪽은 그대로, 왼쪽은 좌우 반전(scaleX(-1)). */
+  #player.idle { animation: idleBob 1.5s ease-in-out infinite; }
+  #player.running { width: 76px; height: 60px; bottom: 8px; margin-left: -8px; }  /* 넓은 달리기 그림을 히트박스 중심에 정렬 */
+  #player.running.run-r { animation: runHopR 0.34s ease-in-out infinite; }
+  #player.running.run-l { animation: runHopL 0.34s ease-in-out infinite; }
+  @keyframes idleBob { 0%,100%{transform:translateY(0) scale(1,1)} 50%{transform:translateY(-1.5px) scale(1.015,0.985)} }
+  @keyframes runHopR { 0%,100%{transform:translateY(0) scaleX(1)}  50%{transform:translateY(-8px) scaleX(1)} }
+  @keyframes runHopL { 0%,100%{transform:translateY(0) scaleX(-1)} 50%{transform:translateY(-8px) scaleX(-1)} }
+  #player.hit { animation: hitFlash 0.4s; filter: brightness(1.7) drop-shadow(0 0 12px var(--red)); }
   @keyframes hitFlash { 0%,100%{opacity:1} 50%{opacity:0.3} }
-  .obs {
-    position: absolute; pointer-events: none; line-height: 1;
-    filter: drop-shadow(0 2px 3px rgba(120,80,0,0.25));
-  }
+
+  /* 충돌 이펙트(BOOOM/CATCH) — 피카츄를 덮어 가림 */
+  #effectImg { position: absolute; z-index: 7; pointer-events: none; display: none; object-fit: contain;
+    filter: drop-shadow(0 4px 10px rgba(0,0,0,0.3)); }
+  #effectImg.show { display: block; animation: effectPop 0.4s cubic-bezier(.2,1.4,.5,1) both; }
+  @keyframes effectPop { 0%{transform:scale(0.3) rotate(-8deg);opacity:0} 55%{transform:scale(1.15) rotate(3deg);opacity:1} 100%{transform:scale(1) rotate(0);opacity:1} }
+
+  .obs { position: absolute; pointer-events: none; object-fit: contain; filter: drop-shadow(0 2px 3px rgba(120,80,0,0.28)); -webkit-user-drag: none; }
+  .obs.bomb { animation: obsSpin 1.5s linear infinite; }
+  .obs.mon  { animation: obsWobble 1.2s ease-in-out infinite; }
+  @keyframes obsSpin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+  @keyframes obsWobble { 0%,100%{transform:rotate(-12deg)} 50%{transform:rotate(12deg)} }
+
+  .bolt { position: absolute; pointer-events: none; display: flex; align-items: center; justify-content: center;
+    line-height: 1; filter: drop-shadow(0 0 7px rgba(245,168,0,0.95)); animation: boltPulse 0.55s ease-in-out infinite; }
+  @keyframes boltPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.22)} }
+
+  #gameFlash { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle at 50% 55%, #fffef5, rgba(255,224,122,0)); }
+  #gameFlash.show { animation: gameFlash 0.55s ease-out; }
+  @keyframes gameFlash { 0%{opacity:0} 12%{opacity:0.98} 100%{opacity:0} }
+  #skillFlash { position: absolute; inset: 0; z-index: 5; pointer-events: none;
+    display: flex; align-items: center; justify-content: center; opacity: 0; }
+  #skillFlash.show { animation: skillPop 0.95s ease-out; }
+  #skillFlash span { font-size: clamp(1.7rem, 10vw, 2.8rem); font-weight: 900; letter-spacing: 2px; color: #fff;
+    text-shadow: 0 0 14px #ffe07a, 0 0 30px var(--accent), 0 3px 6px rgba(120,80,0,0.5);
+    -webkit-text-stroke: 1.5px var(--accent-ink); white-space: nowrap; }
+  @keyframes skillPop { 0%{opacity:0;transform:scale(0.4)} 18%{opacity:1;transform:scale(1.18)} 55%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(1.06)} }
+
   #dodgeHint {
     position: absolute; left: 0; right: 0; top: 42%;
     text-align: center; color: var(--muted); font-size: 0.9rem; pointer-events: none;
+  }
+
+  /* 모바일/태블릿 조작 패드 — 게임화면과 랭킹보드 사이 */
+  .touchpad { display: flex; gap: 10px; width: min(92vw, 400px); margin: 0 auto 16px; align-items: stretch;
+    touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .touchpad button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none;
+    -webkit-tap-highlight-color: transparent; }
+  .pad-move { flex: 1; font-size: 1.7rem; padding: 14px 0; line-height: 1; }
+  .pad-move.pressed { background: var(--accent-ink); color: #fff; }
+  .skill-btn { flex: 1.5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    padding: 8px 6px; background: var(--panel); color: var(--muted); box-shadow: none; border: 1px solid rgba(214,170,60,0.4); }
+  .skill-btn .skill-title { font-size: 0.92rem; font-weight: 800; letter-spacing: 1px; }
+  .skill-btn .skill-count { font-size: 0.72rem; }
+  .skill-btn.ready { color: var(--accent-ink); border-color: transparent;
+    background: linear-gradient(145deg, #ffe98f, var(--accent)); animation: skillReady 0.8s ease-in-out infinite; }
+  .skill-btn.ready .skill-count { color: var(--accent-ink); font-weight: 800; }
+  @keyframes skillReady {
+    0%,100% { box-shadow: 0 0 0 0 rgba(245,168,0,0.0), 0 4px 16px var(--accent-glow); transform: translateY(0); }
+    50%     { box-shadow: 0 0 22px 5px var(--accent-glow), 0 4px 16px var(--accent-glow); transform: translateY(-1px); }
   }
 
   #message { min-height: 26px; color: var(--muted); font-size: 0.95rem; text-align: center; }
@@ -155,20 +208,21 @@
     <div class="intro-card">
       <div class="intro-emoji"><img src="../assets/pikachu.png" class="pika-hero" alt="피카츄"></div>
       <h2>장애물 피하기</h2>
-      <p class="intro-lead">떨어지는 장애물을 피해 피카츄를 지켜주세요!</p>
+      <p class="intro-lead">폭탄과 몬스터볼을 피하고, 번개를 모아 백만볼트를 터뜨리세요!</p>
       <ul class="intro-rules">
-        <li>👆 <b>조작</b> — 화면을 드래그해 좌우 이동 (PC는 ← → 방향키)</li>
-        <li>💣 <b>피하기</b> — 장애물에 닿으면 게임 오버</li>
-        <li>📈 <b>점점 빨라짐</b> — 오래 버틸수록 장애물이 많아져요</li>
-        <li>💯 <b>점수</b> — 생존 시간만큼 점수 획득</li>
-        <li>🏆 <b>랭킹</b> — 최고 기록이 저장돼 순위에 올라요</li>
+        <li>👆 <b>조작</b> — ← → 방향키, 또는 아래 <b>&lt; ⚡ &gt;</b> 버튼 (드래그도 가능)</li>
+        <li>💣 <b>피하기</b> — 폭탄·몬스터볼에 닿으면 게임 오버</li>
+        <li>⚡ <b>번개 모으기</b> — 떨어지는 번개를 먹으면 스킬 게이지 충전</li>
+        <li>💥 <b>백만볼트</b> — 번개 3개를 모으면 스페이스바(또는 ⚡ 버튼)로 장애물 싹쓸이!</li>
+        <li>📈 <b>점점 어려워짐</b> — 10초마다 장애물이 확 많아지고 빨라져요 (번개는 점점 귀해짐)</li>
+        <li>🏆 <b>랭킹</b> — 생존 시간만큼 점수 · 최고 기록이 순위에 올라요</li>
       </ul>
       <button id="introBtn">게임 시작하기 →</button>
     </div>
   </div>
 
   <h1>장애물 피하기 <img src="../assets/pikachu.png" class="pika-icon" alt="피카츄"></h1>
-  <div class="subtitle">드래그(또는 ← →)로 움직여 장애물을 피하세요!</div>
+  <div class="subtitle">← → (또는 아래 버튼)으로 피하고, 번개 3개로 백만볼트!</div>
 
   <div class="stats">
     <div class="stat"><div class="label">생존 시간</div><div class="value" id="time">0.0</div></div>
@@ -184,10 +238,22 @@
   </div>
 
   <div id="game">
-    <div id="dodgeHint">시작을 누르고 드래그로 조작하세요</div>
-    <img id="player" src="../assets/pika-happy.png" alt="피카츄">
+    <div id="dodgeHint">시작을 누르고 ← → 또는 아래 버튼으로 조작하세요</div>
+    <div id="gameFlash"></div>
+    <div id="skillFlash"><span>⚡ 백만볼트! ⚡</span></div>
+    <img id="player" src="../assets/run-idle.png" alt="피카츄">
+    <img id="effectImg" alt="">
   </div>
   <div id="message">시작 버튼을 눌러 준비하세요!</div>
+
+  <div class="touchpad">
+    <button id="padLeft" class="ghost-btn pad-move" aria-label="왼쪽으로">◀</button>
+    <button id="padSkill" class="skill-btn" aria-label="백만볼트 스킬">
+      <span class="skill-title">⚡ 백만볼트</span>
+      <span class="skill-count" id="skillCount">0 / 3</span>
+    </button>
+    <button id="padRight" class="ghost-btn pad-move" aria-label="오른쪽으로">▶</button>
+  </div>
 
   <div class="ranking">
     <div class="ranking-head">
@@ -323,36 +389,130 @@
   // 온라인 공유 랭킹: 신기록 시 promptOnlineRegister(score, metaText) 호출 → 닉네임 입력 → 등록
   // 입력은 pointerdown 사용, playing && !paused 일 때만 처리.
   // =========================================================
-  // ----- 장애물 피하기 -----
+  // ----- 장애물 피하기 (피카츄 달리기 + 백만볼트) -----
   const playerEl = $('player'), hintEl = $('dodgeHint');   // scoreEl은 상단 공통 참조
-  const OBS_EMOJI = ['🪨', '💣', '⚡', '🌰'];
-  const PW = 56, PH = 64;
-  let obstacles = [], px = 0, elapsed = 0, score = 0, over = false;
-  let rafId = null, lastT = 0, spawnAcc = 0, keyL = false, keyR = false;
+  const gameFlash = $('gameFlash'), skillFlash = $('skillFlash'), effectImg = $('effectImg');
+  const padLeft = $('padLeft'), padRight = $('padRight'), padSkill = $('padSkill'), skillCountEl = $('skillCount');
+  const IDLE_SRC = '../assets/run-idle.png';
+  const RUN_FRAMES = ['../assets/run-r1.png', '../assets/run-r2.png', '../assets/run-r3.png', '../assets/run-r4.png'];
+  const RUN_FRAME_MS = 90;    // 프레임당 90ms → 초당 약 11프레임의 달리기 사이클
+  let curSrc = '';
+  const PW = 60, PH = 68;
+  const BOLT_GOAL = 3;
+  let obstacles = [], bolts = [], px = 0, elapsed = 0, score = 0, over = false;
+  let rafId = null, lastT = 0, obsAcc = 0, boltAcc = 0, keyL = false, keyR = false;
+  let dragDir = 0, dragTime = 0, facing = null;
+  let boltCount = 0, skillReady = false;
+
+  // 이미지 미리 로드(포즈 전환·장애물 등장이 끊기지 않게)
+  ['run-idle', 'run-r1', 'run-r2', 'run-r3', 'run-r4', 'bomb', 'mon', 'boom', 'catch'].forEach(n => { const im = new Image(); im.src = '../assets/' + n + '.png'; });
+
+  // 충돌 이펙트 표시(피카츄를 덮어 가림): 폭탄=BOOOM, 포켓볼=CATCH
+  function showEffect(type){
+    effectImg.src = type === 'bomb' ? '../assets/boom.png' : '../assets/catch.png';
+    const box = 134, pcx = px + PW / 2, pcy = fieldH() - 6 - PH / 2;
+    effectImg.style.width = box + 'px'; effectImg.style.height = box + 'px';
+    effectImg.style.left = Math.round(pcx - box / 2) + 'px';
+    effectImg.style.top = Math.round(pcy - box / 2) + 'px';
+    playerEl.style.visibility = 'hidden';        // 피카츄 가리기
+    effectImg.classList.remove('show'); void effectImg.offsetWidth; effectImg.classList.add('show');
+  }
+  function hideEffect(){ effectImg.classList.remove('show'); playerEl.style.visibility = 'visible'; }
 
   function fieldW(){ return gameEl.clientWidth; }
   function fieldH(){ return gameEl.clientHeight; }
   function updateScore(){ scoreEl.textContent = score.toLocaleString(); }
   function setPlayerX(x){ px = Math.max(2, Math.min(fieldW() - PW - 2, x)); playerEl.style.left = px + 'px'; }
 
-  function spawnObs(){
-    const d = document.createElement('div');
-    d.className = 'obs';
-    d.textContent = OBS_EMOJI[Math.floor(Math.random() * OBS_EMOJI.length)];
-    const size = 26 + Math.random() * 14;
-    d.style.fontSize = size + 'px';
-    const x = 4 + Math.random() * Math.max(10, fieldW() - size - 12);
-    d.style.left = x + 'px'; d.style.top = '-44px';
-    gameEl.appendChild(d);
-    const base = 150 + (elapsed / 1000) * 11;              // 시간이 갈수록 빨라짐
-    obstacles.push({ el: d, x, y: -44, size, vy: base * (0.8 + Math.random() * 0.5) });
+  // 포즈(정지 이미지) 교체 — 바뀔 때만 DOM 갱신해서 애니메이션이 매 프레임 리셋되지 않게
+  function setSrc(s){ if (curSrc !== s){ curSrc = s; playerEl.src = s; } }
+  // 대기=서있는 그림, 좌우=4프레임 달리기 그림 순환(왼쪽은 CSS로 좌우반전)
+  function setFacing(p, now){
+    if (p === 'idle'){
+      if (facing !== 'idle'){ facing = 'idle'; playerEl.classList.remove('running', 'run-l', 'run-r'); playerEl.classList.add('idle'); }
+      setSrc(IDLE_SRC);
+      return;
+    }
+    if (facing !== p){ facing = p; playerEl.classList.remove('idle', 'run-l', 'run-r'); playerEl.classList.add('running', p === 'left' ? 'run-l' : 'run-r'); }
+    const fi = Math.floor((now || performance.now()) / RUN_FRAME_MS) % RUN_FRAMES.length;
+    setSrc(RUN_FRAMES[fi]);
   }
 
-  function collide(o){
-    const pL = px + 13, pR = px + PW - 13;                 // 판정 여유(관대하게)
-    const pT = fieldH() - 6 - PH + 18, pB = fieldH() - 10;
-    const oL = o.x + 5, oR = o.x + o.size - 5, oT = o.y + 5, oB = o.y + o.size - 5;
-    return oR > pL && oL < pR && oB > pT && oT < pB;
+  // 스킬 게이지 UI
+  function updateSkillUI(){
+    skillCountEl.textContent = boltCount + ' / ' + BOLT_GOAL;
+    padSkill.classList.toggle('ready', skillReady);
+  }
+
+  // ----- 사운드(추가) -----
+  function collectSound(){ if (muted || !audioCtx) return; const n = audioCtx.currentTime; envTone(880, n, 0.08, 'square', 0.14); envTone(1320, n + 0.04, 0.10, 'square', 0.10); }
+  function thunderSound(){
+    if (muted || !audioCtx) return; const n = audioCtx.currentTime;
+    // 낮은 천둥 우르릉
+    const o = envTone(90, n, 0.6, 'sawtooth', 0.22); o.frequency.exponentialRampToValueAtTime(35, n + 0.6);
+    envTone(320, n, 0.3, 'square', 0.12);
+    // 번쩍! 전기 지직거리는 크래클(필터드 노이즈 버스트)
+    const dur = 0.5;
+    const buf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * dur), audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 1.4);
+    const src = audioCtx.createBufferSource(); src.buffer = buf;
+    const bp = audioCtx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3400; bp.Q.value = 0.6;
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.0001, n); g.gain.linearRampToValueAtTime(0.24, n + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, n + dur);
+    src.connect(bp); bp.connect(g); g.connect(audioCtx.destination);
+    src.start(n); src.stop(n + dur + 0.02);
+    // 날카로운 지직 하강음(번개 내리치는 느낌)
+    const z = envTone(2100, n, 0.2, 'sawtooth', 0.11); z.frequency.exponentialRampToValueAtTime(360, n + 0.2);
+  }
+
+  // ----- 스폰 -----
+  function spawnObs(level){
+    const type = Math.random() < 0.5 ? 'bomb' : 'mon';
+    const size = 30 + Math.random() * 14 + level * 1.5;
+    const img = document.createElement('img');
+    img.className = 'obs ' + type; img.src = '../assets/' + type + '.png'; img.alt = ''; img.draggable = false;
+    img.style.width = size + 'px'; img.style.height = size + 'px';
+    const x = 4 + Math.random() * Math.max(10, fieldW() - size - 12);
+    img.style.left = x + 'px'; img.style.top = (-size - 6) + 'px';
+    gameEl.appendChild(img);
+    const base = 150 + (elapsed / 1000) * 11 + level * 22;   // 시간·레벨이 갈수록 빨라짐
+    obstacles.push({ el: img, x, y: -size - 6, size, vy: base * (0.8 + Math.random() * 0.5), type });
+  }
+  function spawnBolt(){
+    const size = 30;
+    const el = document.createElement('div'); el.className = 'bolt'; el.textContent = '⚡';
+    el.style.fontSize = size + 'px'; el.style.width = size + 'px'; el.style.height = size + 'px';
+    const x = 6 + Math.random() * Math.max(10, fieldW() - size - 14);
+    el.style.left = x + 'px'; el.style.top = (-size - 6) + 'px';
+    gameEl.appendChild(el);
+    bolts.push({ el, x, y: -size - 6, size, vy: 140 + (elapsed / 1000) * 6 });
+  }
+
+  // ----- 충돌/획득 판정 -----
+  function playerBox(){ return { L: px + 14, R: px + PW - 14, T: fieldH() - 6 - PH + 20, B: fieldH() - 8 }; }
+  function collideObs(o){ const p = playerBox();
+    const oL = o.x + o.size * 0.18, oR = o.x + o.size * 0.82, oT = o.y + o.size * 0.18, oB = o.y + o.size * 0.82;
+    return oR > p.L && oL < p.R && oB > p.T && oT < p.B; }
+  function collectBolt(b){ const p = playerBox();   // 획득은 관대하게
+    const oL = b.x - 4, oR = b.x + b.size + 4, oT = b.y - 4, oB = b.y + b.size + 4;
+    return oR > p.L && oL < p.R && oB > p.T && oT < p.B; }
+
+  function addBolt(){
+    if (boltCount < BOLT_GOAL) boltCount++;
+    if (boltCount >= BOLT_GOAL) skillReady = true;
+    updateSkillUI(); collectSound();
+    flash(skillReady ? '⚡ <span class="combo">백만볼트 준비 완료!</span> 스페이스바 / ⚡ 버튼!' : `⚡ 번개 ${boltCount}/${BOLT_GOAL} 충전!`);
+  }
+
+  // ----- 백만볼트 스킬 -----
+  function flashSkill(){ [skillFlash, gameFlash].forEach(el => { el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); }); }
+  function useSkill(){
+    if (!playing || paused || over || !skillReady) return;
+    skillReady = false; boltCount = 0; updateSkillUI();
+    flashSkill(); thunderSound();
+    obstacles.forEach(o => o.el.remove()); obstacles = [];   // 화면 장애물 싹쓸이
+    flash('💥 <span class="hit">백만볼트!</span> 장애물을 모두 없앴어요!');
   }
 
   function loop(now){
@@ -361,59 +521,111 @@
     timeEl.textContent = (elapsed / 1000).toFixed(1);
     score = Math.round(elapsed / 100);                     // 초당 10점
     updateScore();
-    if (keyL) setPlayerX(px - 0.34 * dt);
-    if (keyR) setPlayerX(px + 0.34 * dt);
-    spawnAcc += dt;
-    const interval = Math.max(260, 850 - (elapsed / 1000) * 20);
-    if (spawnAcc >= interval){ spawnAcc = 0; spawnObs(); }
+
+    // 이동
+    if (keyL && !keyR) setPlayerX(px - 0.34 * dt);
+    else if (keyR && !keyL) setPlayerX(px + 0.34 * dt);
+    // 포즈 결정: 키/버튼 > 드래그 방향 > 대기
+    let pose = 'idle';
+    if (keyL && !keyR) pose = 'left';
+    else if (keyR && !keyL) pose = 'right';
+    else if (dragDir && now - dragTime < 150) pose = dragDir < 0 ? 'left' : 'right';
+    setFacing(pose, now);
+
+    // 난이도: 10초마다 장애물 개수/속도 크게 ↑, 30초마다 번개 등장 ↓
+    const level = Math.floor(elapsed / 10000);
+    const boltLevel = Math.floor(elapsed / 30000);
+    obsAcc += dt;
+    const obsInterval = Math.max(340, 820 - level * 65);
+    if (obsAcc >= obsInterval){ obsAcc = 0; const batch = 1 + Math.min(5, level); for (let k = 0; k < batch; k++) spawnObs(level); }
+    boltAcc += dt;
+    const boltInterval = Math.min(7000, 2600 + boltLevel * 1200);
+    if (boltAcc >= boltInterval){ boltAcc = 0; spawnBolt(); }
+
+    // 장애물 낙하 + 충돌
     for (let i = obstacles.length - 1; i >= 0; i--){
       const o = obstacles[i];
-      o.y += o.vy * dt / 1000;
-      o.el.style.top = o.y + 'px';
-      if (o.y > fieldH() + 12){ o.el.remove(); obstacles.splice(i, 1); continue; }
-      if (collide(o)){
-        over = true; playerEl.classList.add('hit'); sfxMiss();
+      o.y += o.vy * dt / 1000; o.el.style.top = o.y + 'px';
+      if (o.y > fieldH() + 16){ o.el.remove(); obstacles.splice(i, 1); continue; }
+      if (collideObs(o)){
+        over = true;
+        playerEl.classList.remove('idle', 'running', 'run-l', 'run-r');
+        showEffect(o.type);          // 폭탄=BOOOM / 포켓볼=CATCH, 피카츄를 가림
+        sfxMiss();
         cancelAnimationFrame(rafId);
-        setTimeout(() => { if (playing) endGame(false); }, 400);
+        setTimeout(() => { if (playing) endGame(false); }, 800);
         return;
       }
+    }
+    // 번개 낙하 + 획득
+    for (let i = bolts.length - 1; i >= 0; i--){
+      const b = bolts[i];
+      b.y += b.vy * dt / 1000; b.el.style.top = b.y + 'px';
+      if (b.y > fieldH() + 16){ b.el.remove(); bolts.splice(i, 1); continue; }
+      if (collectBolt(b)){ b.el.remove(); bolts.splice(i, 1); addBolt(); }
     }
     rafId = requestAnimationFrame(loop);
   }
 
-  // 입력: 드래그/마우스 따라가기 + 방향키
+  // ===== 입력 =====
+  // 게임판 드래그(마우스/터치) — 이동 + 방향 힌트
   gameEl.addEventListener('pointermove', e => {
     if (!playing || paused || over) return;
-    setPlayerX(e.clientX - gameEl.getBoundingClientRect().left - PW / 2);
+    const nx = e.clientX - gameEl.getBoundingClientRect().left - PW / 2;
+    const d = nx > px + 0.5 ? 1 : (nx < px - 0.5 ? -1 : 0);
+    if (d){ dragDir = d; dragTime = performance.now(); }
+    setPlayerX(nx);
   });
   gameEl.addEventListener('pointerdown', e => {
     if (!playing || paused || over) return;
     setPlayerX(e.clientX - gameEl.getBoundingClientRect().left - PW / 2);
   });
+  // 방향키 + 스페이스바(스킬)
   document.addEventListener('keydown', e => {
     if (e.key === 'ArrowLeft'){ keyL = true; e.preventDefault(); }
-    if (e.key === 'ArrowRight'){ keyR = true; e.preventDefault(); }
+    else if (e.key === 'ArrowRight'){ keyR = true; e.preventDefault(); }
+    else if (e.key === ' ' || e.code === 'Space' || e.key === 'Spacebar'){ if (playing){ e.preventDefault(); useSkill(); } }
   });
   document.addEventListener('keyup', e => {
     if (e.key === 'ArrowLeft') keyL = false;
     if (e.key === 'ArrowRight') keyR = false;
   });
+  // 모바일/태블릿 버튼 — 꾹 눌러도 '게임 버튼'으로만: 롱프레스 메뉴/선택/드래그 차단
+  function bindHold(btn, side){
+    const down = e => { e.preventDefault(); if (side === 'L') keyL = true; else keyR = true; btn.classList.add('pressed'); };
+    const up = e => { if (e) e.preventDefault(); if (side === 'L') keyL = false; else keyR = false; btn.classList.remove('pressed'); };
+    btn.addEventListener('pointerdown', down);
+    btn.addEventListener('pointerup', up);
+    btn.addEventListener('pointerleave', up);
+    btn.addEventListener('pointercancel', up);
+    btn.addEventListener('contextmenu', e => e.preventDefault());
+    btn.addEventListener('dragstart', e => e.preventDefault());
+  }
+  bindHold(padLeft, 'L'); bindHold(padRight, 'R');
+  padSkill.addEventListener('pointerdown', e => { e.preventDefault(); useSkill(); });
+  padSkill.addEventListener('contextmenu', e => e.preventDefault());
 
-  function clearObs(){ obstacles.forEach(o => o.el.remove()); obstacles = []; }
+  function clearItems(){ obstacles.forEach(o => o.el.remove()); obstacles = []; bolts.forEach(b => b.el.remove()); bolts = []; }
+  function resetInput(){ keyL = false; keyR = false; dragDir = 0; padLeft.classList.remove('pressed'); padRight.classList.remove('pressed'); }
 
   function onStart(){
-    clearObs();
-    elapsed = 0; score = 0; over = false; spawnAcc = 0;
+    clearItems();
+    elapsed = 0; score = 0; over = false; obsAcc = 0; boltAcc = 0;
+    boltCount = 0; skillReady = false; updateSkillUI();
+    resetInput();
+    hideEffect();
     playerEl.classList.remove('hit');
+    facing = null; setFacing('idle');
     hintEl.style.display = 'none';
     updateScore(); timeEl.textContent = '0.0';
     setPlayerX((fieldW() - PW) / 2);
     lastT = performance.now();
     rafId = requestAnimationFrame(loop);
-    flash('피해요! 🏃💨');
+    flash('피해요! ⚡ 번개를 모아 백만볼트!');
   }
   function onEnd(quit){
     cancelAnimationFrame(rafId);
+    resetInput();
     const sec = (elapsed / 1000).toFixed(1);
     const meta = `${sec}초 생존`;
     let result = `${quit ? '중단!' : '💥 게임 오버!'} <span class="hit">${score.toLocaleString()}점</span> · ${sec}초 생존`;
@@ -426,10 +638,12 @@
     playEndJingle(newRecord);
     if (newRecord) promptOnlineRegister(score, meta);
   }
-  function onPause(){ cancelAnimationFrame(rafId); }
+  function onPause(){ cancelAnimationFrame(rafId); resetInput(); }
   function onResume(){ if (!over){ lastT = performance.now(); rafId = requestAnimationFrame(loop); } }
 
+  facing = null; setFacing('idle');  // 로드 시 대기 모션
   setPlayerX((fieldW() - PW) / 2);   // 로드 시 가운데 배치
+  updateSkillUI();
 
   // ===== 공유(온라인) 랭킹 UI — SLUG 기준으로 Firestore에 저장/조회 =====
   const onlineListEl = $('onlineList'), refreshOnlineBtn = $('refreshOnlineBtn');
